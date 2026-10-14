@@ -24,6 +24,7 @@ Options:
     --invert-v             Invert vertical scroll direction
     --invert-h             Invert horizontal scroll direction
     --quantize             Accumulate wheel amount and send it in units of 120
+    --no-cursor            Do not change the mouse cursor while scrolling
     --log <FILE>           Also append the log to FILE
     --trace                Log middle button, wheel and in-gesture move events in
                            detail, including events injected by other software or
@@ -40,6 +41,8 @@ pub struct Options {
     pub log_file: Option<PathBuf>,
     /// Whether to log events in detail
     pub trace: bool,
+    /// Whether to show an arrow cursor for the scroll axis while scrolling
+    pub cursor: bool,
 }
 
 /// Result of argument parsing.
@@ -59,6 +62,7 @@ where
     let mut gesture = GestureConfig::default();
     let mut log_file = None;
     let mut trace = false;
+    let mut cursor = true;
 
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -106,6 +110,7 @@ where
             "--quantize" => gesture.quantize = true,
             "--log" => log_file = Some(PathBuf::from(value()?)),
             "--trace" => trace = true,
+            "--no-cursor" => cursor = false,
             _ => return Err(format!("unknown option: {arg} (see --help)")),
         }
     }
@@ -113,6 +118,7 @@ where
         gesture,
         log_file,
         trace,
+        cursor,
     }))
 }
 
@@ -140,6 +146,7 @@ mod tests {
         assert_eq!(opts.gesture, GestureConfig::default());
         assert_eq!(opts.log_file, None);
         assert!(!opts.trace);
+        assert!(opts.cursor);
     }
 
     #[test]
@@ -164,6 +171,7 @@ mod tests {
             "--log",
             "a.log",
             "--trace",
+            "--no-cursor",
         ])
         .unwrap() else {
             panic!("expected Run")
@@ -177,6 +185,7 @@ mod tests {
         );
         assert_eq!(opts.log_file, Some(PathBuf::from("a.log")));
         assert!(opts.trace);
+        assert!(!opts.cursor);
     }
 
     #[test]

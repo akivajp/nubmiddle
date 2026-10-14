@@ -102,7 +102,7 @@ impl Decision {
 
 /// Axes a scroll gesture is allowed to move along.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Axes {
+pub enum Axes {
     Both,
     Vertical,
     Horizontal,
@@ -162,6 +162,14 @@ impl Gesture {
     /// True while the middle button is held (pending, scrolling or dragging).
     pub fn is_active(&self) -> bool {
         self.state != State::Idle
+    }
+
+    /// Axes being scrolled, or None when not scrolling (e.g. to show a matching cursor).
+    pub fn scroll_axes(&self) -> Option<Axes> {
+        match self.state {
+            State::Scrolling { axes, .. } => Some(axes),
+            _ => None,
+        }
     }
 
     /// Processes one input event and returns the decision.
@@ -450,6 +458,26 @@ mod tests {
             g.handle(Input::Move { x: 5, y: 0 }).emit,
             vec![Output::HWheel(50)]
         );
+    }
+
+    #[test]
+    fn scroll_axes_reports_locked_axis() {
+        let mut g = gesture(MoveMode::Scroll);
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        // Not scrolling yet while pending
+        assert_eq!(g.scroll_axes(), None);
+        g.handle(Input::Move { x: 0, y: 5 });
+        assert_eq!(g.scroll_axes(), Some(Axes::Vertical));
+        g.handle(Input::MiddleUp);
+        assert_eq!(g.scroll_axes(), None);
+
+        let mut g = Gesture::new(GestureConfig {
+            axis_lock: false,
+            ..GestureConfig::default()
+        });
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        g.handle(Input::Move { x: 0, y: 5 });
+        assert_eq!(g.scroll_axes(), Some(Axes::Both));
     }
 
     #[test]

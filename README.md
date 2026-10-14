@@ -42,6 +42,7 @@ nubscroll [OPTIONS]
 | `--no-axis-lock` | Scroll both axes at once. By default each scroll is locked to the axis it started along, because sideways drift mixed into vertical scrolling makes some apps (e.g. Windows Settings) shake |
 | `--invert-v` / `--invert-h` | Invert vertical / horizontal scroll direction |
 | `--quantize` | Send wheel events only in whole notches (for apps that mishandle high-resolution wheel input) |
+| `--no-cursor` | Do not change the mouse cursor while scrolling. By default it becomes a vertical / horizontal arrow showing the scroll axis |
 | `--log <FILE>` | Also append the log to a file |
 | `--trace` | Log middle button / wheel events in detail, including events injected by drivers (for troubleshooting) |
 | `-h`, `--help` | Show help |
@@ -88,6 +89,7 @@ cargo test
 ## Roadmap
 
 - [x] Core: middle click / scroll / drag decision, wheel output (console prototype)
+- [x] Scroll cursor: show a vertical / horizontal arrow cursor while scrolling, so the locked axis is visible
 - [ ] Tray icon with menu: autostart (checkbox), pause (checkbox), settings, quit
 - [ ] Autostart via Task Scheduler with highest privileges, toggled from the tray menu
 - [ ] Self-repair: re-register the task when the exe has been moved or replaced
@@ -95,6 +97,7 @@ cargo test
 - [ ] Per-process exclusion list (Blender, CAD, ...)
 - [ ] Apply only to the TrackPoint, not to external mice (Raw Input)
 - [ ] Release builds for x64 / ARM64 via GitHub Actions
+- [ ] Installer (in addition to the single portable exe)
 
 ## License
 

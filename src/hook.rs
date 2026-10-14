@@ -16,7 +16,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
 };
 
-use crate::gesture::{Gesture, Input, Output};
+use crate::gesture::{Axes, Gesture, Input, Output};
 use crate::logger::Logger;
 use crate::output::MAGIC;
 use crate::process;
@@ -25,6 +25,8 @@ use crate::process;
 struct Context {
     gesture: Gesture,
     out: Sender<Output>,
+    /// Scroll cursor requests (None if the scroll cursor is disabled)
+    cursor: Option<Sender<Option<Axes>>>,
     log: Logger,
     trace: bool,
 }
@@ -35,11 +37,18 @@ thread_local! {
 }
 
 /// Installs the hook and runs the message loop. Does not return until `WM_QUIT`.
-pub fn run(gesture: Gesture, out: Sender<Output>, log: Logger, trace: bool) -> Result<(), String> {
+pub fn run(
+    gesture: Gesture,
+    out: Sender<Output>,
+    cursor: Option<Sender<Option<Axes>>>,
+    log: Logger,
+    trace: bool,
+) -> Result<(), String> {
     CONTEXT.with(|c| {
         *c.borrow_mut() = Some(Context {
             gesture,
             out,
+            cursor,
             log,
             trace,
         })
@@ -99,11 +108,17 @@ fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
             WM_MOUSEMOVE => Input::Move { x, y },
             _ => return false,
         };
-        let before = ctx.gesture.state_name();
+        let (before, axes_before) = (ctx.gesture.state_name(), ctx.gesture.scroll_axes());
         let decision = ctx.gesture.handle(input);
-        let after = ctx.gesture.state_name();
+        let (after, axes_after) = (ctx.gesture.state_name(), ctx.gesture.scroll_axes());
         if before != after {
             ctx.log.log(format!("state: {before} -> {after}"));
+        }
+        // Switch the cursor when scrolling starts or ends (done on the cursor thread)
+        if axes_before != axes_after
+            && let Some(cursor) = &ctx.cursor
+        {
+            let _ = cursor.send(axes_after);
         }
         for out in decision.emit {
             let _ = ctx.out.send(out);
