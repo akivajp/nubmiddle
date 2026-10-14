@@ -8,10 +8,10 @@ use std::cell::RefCell;
 use std::ptr::{null, null_mut};
 use std::sync::mpsc::Sender;
 
-use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, LLMHF_INJECTED, MSG,
+    CallNextHookEx, DispatchMessageW, GetCursorPos, GetMessageW, HC_ACTION, LLMHF_INJECTED, MSG,
     MSLLHOOKSTRUCT, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, WH_MOUSE_LL,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
 };
@@ -19,6 +19,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use crate::gesture::{Gesture, Input, Output};
 use crate::logger::Logger;
 use crate::output::MAGIC;
+use crate::process;
 
 /// フックのコールバックから参照する状態。
 struct Context {
@@ -134,6 +135,20 @@ fn trace(ctx: &Context, msg: u32, info: &MSLLHOOKSTRUCT, injected: bool) {
     if matches!(msg, WM_MOUSEWHEEL | WM_MOUSEHWHEEL) {
         // ホイール量は mouseData の上位ワード (符号付き)
         line += &format!(" delta={}", (info.mouseData >> 16) as u16 as i16);
+    }
+    if msg == WM_MOUSEMOVE {
+        // フックの pt は「移動後の予定位置」。実際のカーソル位置と比べると、
+        // 握りつぶし (カーソル固定) が効いているかが分かる
+        let mut cur = POINT { x: 0, y: 0 };
+        unsafe { GetCursorPos(&mut cur) };
+        line += &format!(" cursor=({},{})", cur.x, cur.y);
+    }
+    if msg == WM_MBUTTONDOWN && !injected {
+        // 押下位置のウィンドウが管理者権限かどうか (UIPI の影響を受けるか) を調べる
+        line += &format!(
+            " target={}",
+            process::describe_window_at(info.pt.x, info.pt.y)
+        );
     }
     if injected && info.dwExtraInfo != MAGIC {
         line += &format!(" extra={:#x}", info.dwExtraInfo);

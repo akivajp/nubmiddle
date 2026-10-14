@@ -78,7 +78,11 @@ where
                 gesture.mode = match value()?.as_str() {
                     "scroll" => MoveMode::Scroll,
                     "drag" => MoveMode::Drag,
-                    v => return Err(format!("invalid value for --mode: {v} (expected scroll or drag)")),
+                    v => {
+                        return Err(format!(
+                            "invalid value for --mode: {v} (expected scroll or drag)"
+                        ));
+                    }
                 }
             }
             "--threshold" => {
@@ -144,8 +148,18 @@ mod tests {
     #[test]
     fn all_options() {
         let Command::Run(opts) = parse(&[
-            "--mode", "drag", "--threshold=8", "--sensitivity", "2.5", "--no-hwheel",
-            "--invert-v", "--invert-h", "--quantize", "--log", "a.log", "--trace",
+            "--mode",
+            "drag",
+            "--threshold=8",
+            "--sensitivity",
+            "2.5",
+            "--no-hwheel",
+            "--invert-v",
+            "--invert-h",
+            "--quantize",
+            "--log",
+            "a.log",
+            "--trace",
         ])
         .unwrap() else {
             panic!("Run を期待")

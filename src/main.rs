@@ -10,6 +10,8 @@ mod hook;
 mod logger;
 #[cfg(windows)]
 mod output;
+#[cfg(windows)]
+mod process;
 
 use std::process::ExitCode;
 
@@ -49,7 +51,7 @@ fn run(opts: config::Options) -> ExitCode {
     if let Some(path) = &opts.log_file {
         log.log(format!("log file: {}", path.display()));
     }
-    if is_elevated() {
+    if process::is_current_elevated() {
         log.log("running as administrator: works on elevated windows too");
     } else {
         log.log("running without administrator rights: does not work on elevated windows (UIPI)");
@@ -77,32 +79,4 @@ fn run(opts: config::Options) -> ExitCode {
 fn run(_opts: config::Options) -> ExitCode {
     eprintln!("error: nubscroll runs only on Windows");
     ExitCode::FAILURE
-}
-
-/// 自プロセスが管理者権限 (昇格済みトークン) で動いているかを返す。
-#[cfg(windows)]
-fn is_elevated() -> bool {
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::Security::{
-        GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
-    };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-
-    unsafe {
-        let mut token: HANDLE = std::ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-            return false;
-        }
-        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
-        let mut len = 0u32;
-        let ok = GetTokenInformation(
-            token,
-            TokenElevation,
-            (&mut elevation as *mut TOKEN_ELEVATION).cast(),
-            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
-            &mut len,
-        );
-        CloseHandle(token);
-        ok != 0 && elevation.TokenIsElevated != 0
-    }
 }

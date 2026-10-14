@@ -88,7 +88,10 @@ impl Decision {
 
     /// 元のイベントを握りつぶし、指定のイベントを送出する。
     fn suppress(emit: Vec<Output>) -> Self {
-        Self { suppress: true, emit }
+        Self {
+            suppress: true,
+            emit,
+        }
     }
 }
 
@@ -163,7 +166,14 @@ impl Gesture {
             (_, Input::MiddleDown { .. }) => Decision::pass(),
 
             // --- 保留中の移動: カーソルを固定して移動量を累積する ---
-            (State::Pending { origin, acc_x, acc_y }, Input::Move { x, y }) => {
+            (
+                State::Pending {
+                    origin,
+                    acc_x,
+                    acc_y,
+                },
+                Input::Move { x, y },
+            ) => {
                 // カーソルは origin に固定されているので、pt - origin がこの移動の差分
                 let (dx, dy) = (x - origin.0, y - origin.1);
                 let (acc_x, acc_y) = (acc_x + dx, acc_y + dy);
@@ -171,7 +181,11 @@ impl Gesture {
                 let dist2 = i64::from(acc_x).pow(2) + i64::from(acc_y).pow(2);
                 if dist2 < t * t {
                     // まだ閾値未満: 保留を続ける
-                    self.state = State::Pending { origin, acc_x, acc_y };
+                    self.state = State::Pending {
+                        origin,
+                        acc_x,
+                        acc_y,
+                    };
                     return Decision::suppress(vec![]);
                 }
                 match self.config.mode {
@@ -233,7 +247,12 @@ impl Gesture {
     /// 移動量 (dx, dy) をホイール量に変換し、送出すべきイベントを返す。
     /// 1 回で送り切れない端数は状態に持ち越す。
     fn scroll(&mut self, dx: i32, dy: i32) -> Vec<Output> {
-        let State::Scrolling { origin, rem_x, rem_y } = self.state else {
+        let State::Scrolling {
+            origin,
+            rem_x,
+            rem_y,
+        } = self.state
+        else {
             return vec![];
         };
         let cfg = &self.config;
@@ -249,7 +268,11 @@ impl Gesture {
 
         let (out_y, rem_y) = split_wheel(rem_y, cfg.quantize);
         let (out_x, rem_x) = split_wheel(rem_x, cfg.quantize);
-        self.state = State::Scrolling { origin, rem_x, rem_y };
+        self.state = State::Scrolling {
+            origin,
+            rem_x,
+            rem_y,
+        };
 
         let mut emit = Vec::with_capacity(2);
         if out_y != 0 {
@@ -325,7 +348,10 @@ mod tests {
         assert!(d.suppress);
         assert_eq!(d.emit, vec![Output::Wheel(-50)]);
         // 続けて 2px 下へ
-        assert_eq!(g.handle(Input::Move { x: 0, y: 2 }).emit, vec![Output::Wheel(-20)]);
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: 2 }).emit,
+            vec![Output::Wheel(-20)]
+        );
         // スクロール後の up では何も送らない
         assert_eq!(g.handle(Input::MiddleUp), Decision::suppress(vec![]));
     }
@@ -350,7 +376,10 @@ mod tests {
         });
         g.handle(Input::MiddleDown { x: 0, y: 0 });
         assert_eq!(g.handle(Input::Move { x: 10, y: 0 }).emit, vec![]);
-        assert_eq!(g.handle(Input::Move { x: 0, y: -1 }).emit, vec![Output::Wheel(10)]);
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: -1 }).emit,
+            vec![Output::Wheel(10)]
+        );
     }
 
     #[test]
@@ -363,9 +392,15 @@ mod tests {
         // 5px = 50: まだ 1 ノッチに満たない
         assert_eq!(g.handle(Input::Move { x: 0, y: -5 }).emit, vec![]);
         // さらに 8px = 80 → 計 130: 120 を送って 10 を持ち越す
-        assert_eq!(g.handle(Input::Move { x: 0, y: -8 }).emit, vec![Output::Wheel(120)]);
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: -8 }).emit,
+            vec![Output::Wheel(120)]
+        );
         // さらに 11px = 110 → 計 120
-        assert_eq!(g.handle(Input::Move { x: 0, y: -11 }).emit, vec![Output::Wheel(120)]);
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: -11 }).emit,
+            vec![Output::Wheel(120)]
+        );
     }
 
     #[test]
@@ -379,7 +414,10 @@ mod tests {
         // 1px = 0.5 → まだ 0
         assert_eq!(g.handle(Input::Move { x: 0, y: -1 }).emit, vec![]);
         // 計 1.0 → 1 を送る
-        assert_eq!(g.handle(Input::Move { x: 0, y: -1 }).emit, vec![Output::Wheel(1)]);
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: -1 }).emit,
+            vec![Output::Wheel(1)]
+        );
     }
 
     #[test]
