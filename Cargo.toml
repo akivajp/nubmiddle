@@ -1,0 +1,28 @@
+[package]
+name = "nubscroll"
+version = "0.1.0"
+edition = "2024"
+description = "ThinkPad トラックポイントの中ボタンで中クリックとスクロールを両立させる Windows 常駐ツール"
+license = "MIT"
+repository = "https://github.com/akivajp/nubscroll"
+
+# Windows API は Windows ビルド時のみ依存する。
+# 判定ロジック (gesture) と設定 (config) は OS 非依存なので Linux 上でも `cargo test` できる。
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+# 常駐ツールなので exe を小さく保つ
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

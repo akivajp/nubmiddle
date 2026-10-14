@@ -1,0 +1,8 @@
+# WSL (Linux) から Windows 向け exe をクロスビルドするための設定。
+# 事前に `sudo apt install mingw-w64` と `rustup target add x86_64-pc-windows-gnu` が必要。
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+[alias]
+# `cargo win` / `cargo win --release` で Windows 向けにビルドする
+win = "build --target x86_64-pc-windows-gnu"
