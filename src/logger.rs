@@ -1,7 +1,7 @@
-//! 日時付きのログ出力 (Windows 専用)。
+//! Timestamped logging (Windows only).
 //!
-//! フックのコールバックは処理が遅いと Windows に黙って外されるため、
-//! コンソールやファイルへの書き込みは専用スレッドで行い、呼び出し側はキューに積むだけにする。
+//! Windows silently removes a hook whose callback is too slow, so writing to the
+//! console or file happens on a dedicated thread; callers only enqueue.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -12,14 +12,14 @@ use std::thread;
 use windows_sys::Win32::Foundation::SYSTEMTIME;
 use windows_sys::Win32::System::SystemInformation::GetLocalTime;
 
-/// ログの送り口。複製して複数スレッドから使える。
+/// Logging handle. Can be cloned and used from multiple threads.
 #[derive(Clone)]
 pub struct Logger {
     tx: Sender<(SYSTEMTIME, String)>,
 }
 
 impl Logger {
-    /// ログ出力スレッドを起動する。`file` を指定するとコンソールに加えてファイルにも追記する。
+    /// Starts the logging thread. With `file`, the log is also appended to that file.
     pub fn start(file: Option<&Path>) -> io::Result<Self> {
         let mut file = match file {
             Some(path) => Some(OpenOptions::new().create(true).append(true).open(path)?),
@@ -36,7 +36,7 @@ impl Logger {
                     );
                     println!("{line}");
                     if let Some(f) = file.as_mut() {
-                        // ログが書けなくても本体の動作は止めない
+                        // Failing to write the log must not stop the tool
                         let _ = writeln!(f, "{line}").and_then(|_| f.flush());
                     }
                 }
@@ -44,9 +44,9 @@ impl Logger {
         Ok(Self { tx })
     }
 
-    /// 現在時刻を付けてログを 1 行キューに積む。
+    /// Enqueues one log line with the current time.
     pub fn log(&self, msg: impl Into<String>) {
-        // 時刻は出力時ではなく呼び出し時点のものを使う
+        // Use the time of the call, not the time of output
         let mut now: SYSTEMTIME = unsafe { std::mem::zeroed() };
         unsafe { GetLocalTime(&mut now) };
         let _ = self.tx.send((now, msg.into()));

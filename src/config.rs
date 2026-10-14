@@ -1,12 +1,12 @@
-//! コマンドライン引数の解析 (OS 非依存)。
+//! Command-line argument parsing (OS-independent).
 //!
-//! 試作段階ではコマンドラインだけで設定する。ini ファイルでの設定は後で追加する。
+//! For the prototype, settings come only from the command line. An ini file will be added later.
 
 use std::path::PathBuf;
 
 use crate::gesture::{GestureConfig, MoveMode};
 
-/// `--help` で表示する使い方。
+/// Usage text shown by `--help`.
 pub const USAGE: &str = "\
 nubscroll - middle click and scroll with the TrackPoint middle button
 
@@ -29,27 +29,27 @@ Options:
     -h, --help             Show this help
 ";
 
-/// 実行時の設定。
+/// Runtime options.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
-    /// ジェスチャー判定の設定
+    /// Gesture recognition settings
     pub gesture: GestureConfig,
-    /// ログの追記先ファイル
+    /// File to append the log to
     pub log_file: Option<PathBuf>,
-    /// イベントの詳細ログを出すか
+    /// Whether to log events in detail
     pub trace: bool,
 }
 
-/// 引数解析の結果。
+/// Result of argument parsing.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
-    /// ヘルプを表示して終了する
+    /// Show help and exit
     Help,
-    /// 指定の設定で常駐する
+    /// Run with the given options
     Run(Options),
 }
 
-/// コマンドライン引数 (プログラム名を除く) を解析する。
+/// Parses command-line arguments (excluding the program name).
 pub fn parse_args<I>(args: I) -> Result<Command, String>
 where
     I: IntoIterator<Item = String>,
@@ -60,12 +60,12 @@ where
 
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
-        // `--name=value` 形式も受け付ける
+        // Also accept the `--name=value` form
         let (name, inline_value) = match arg.split_once('=') {
             Some((n, v)) if n.starts_with("--") => (n.to_string(), Some(v.to_string())),
             _ => (arg.clone(), None),
         };
-        // 値を取るオプション用: インライン値か次の引数を取り出す
+        // For options that take a value: use the inline value or the next argument
         let mut value = || {
             inline_value
                 .clone()
@@ -113,7 +113,7 @@ where
     }))
 }
 
-/// 数値オプションの値を解析する。
+/// Parses the value of a numeric option.
 fn parse_num<T: std::str::FromStr>(name: &str, value: &str) -> Result<T, String> {
     value
         .parse()
@@ -124,7 +124,7 @@ fn parse_num<T: std::str::FromStr>(name: &str, value: &str) -> Result<T, String>
 mod tests {
     use super::*;
 
-    /// 文字列スライスから引数を解析する
+    /// Parses arguments given as string slices
     fn parse(args: &[&str]) -> Result<Command, String> {
         parse_args(args.iter().map(|s| s.to_string()))
     }
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn defaults() {
         let Command::Run(opts) = parse(&[]).unwrap() else {
-            panic!("Run を期待")
+            panic!("expected Run")
         };
         assert_eq!(opts.gesture, GestureConfig::default());
         assert_eq!(opts.log_file, None);
@@ -162,7 +162,7 @@ mod tests {
             "--trace",
         ])
         .unwrap() else {
-            panic!("Run を期待")
+            panic!("expected Run")
         };
         let g = &opts.gesture;
         assert_eq!(g.mode, MoveMode::Drag);

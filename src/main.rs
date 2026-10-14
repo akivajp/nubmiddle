@@ -1,6 +1,6 @@
-//! nubscroll: トラックポイントの中ボタンで中クリックとスクロールを両立させる Windows 常駐ツール。
+//! nubscroll: a Windows tray tool that makes the TrackPoint middle button do both middle click and scrolling.
 //!
-//! 現在は動作検証用の試作 (コンソール常駐版)。トレイアイコンと自動起動は今後追加する。
+//! Currently a console prototype for testing. The tray icon and autostart will be added later.
 
 mod config;
 mod gesture;
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// 設定を表示し、フックを設置して常駐する。
+/// Shows the settings, installs the hook and keeps running.
 #[cfg(windows)]
 fn run(opts: config::Options) -> ExitCode {
     let log = match logger::Logger::start(opts.log_file.as_deref()) {
@@ -74,7 +74,7 @@ fn run(opts: config::Options) -> ExitCode {
     }
 }
 
-/// Windows 以外では動かない (判定ロジックのテストのみ可能)。
+/// Does not run outside Windows (only the logic tests do).
 #[cfg(not(windows))]
 fn run(_opts: config::Options) -> ExitCode {
     eprintln!("error: nubscroll runs only on Windows");

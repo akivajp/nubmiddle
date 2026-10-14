@@ -1,40 +1,40 @@
-//! 中ボタンジェスチャーの判定ロジック (OS 非依存)。
+//! Middle-button gesture recognition (OS-independent).
 //!
-//! 低レベルマウスフックから受け取った入力を [`Gesture::handle`] に渡すと、
-//! 元のイベントを握りつぶすかどうかと、代わりに送出すべき合成イベントを返す。
+//! Feed input from the low-level mouse hook to [`Gesture::handle`], and it returns
+//! whether to swallow the original event and which synthetic events to send instead.
 //!
-//! 基本の流れ:
-//! 1. 中ボタン down を握りつぶして「保留」状態に入る。
-//! 2. 保留中の移動は握りつぶし (カーソル固定)、移動量を累積する。
-//!    累積距離が閾値を超えたら、設定に応じてスクロールかドラッグに移行する。
-//! 3. 閾値を超えずに up が来たら、保留していた中ボタン down/up を送出する (= 中クリック)。
+//! Basic flow:
+//! 1. Swallow the middle-button down and enter the "pending" state.
+//! 2. While pending, swallow moves (keeping the cursor still) and accumulate them.
+//!    Once the distance exceeds the threshold, switch to scrolling or dragging depending on the mode.
+//! 3. If the button is released before that, send the held middle down/up (= a middle click).
 
-/// 中ボタンを押したまま動かしたときの挙動。
+/// What happens when the pointer is moved while the middle button is held.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveMode {
-    /// 移動量をホイール (縦・横) に変換する。カーソルは固定。
+    /// Convert movement into wheel events (vertical / horizontal). The cursor stays still.
     Scroll,
-    /// 通常の中ボタンドラッグとして素通しする (CAD のパン操作など向け)。
+    /// Pass it through as a normal middle-button drag (e.g. for panning in CAD).
     Drag,
 }
 
-/// ジェスチャー判定の設定値。
+/// Gesture recognition settings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GestureConfig {
-    /// 押下＋移動時の挙動
+    /// Behavior on press + move
     pub mode: MoveMode,
-    /// 中クリックとみなさなくなる累積移動距離 (px)
+    /// Accumulated distance (px) beyond which it is no longer a middle click
     pub threshold: i32,
-    /// 1px の移動あたりのホイール量 (120 で 1 ノッチ)
+    /// Wheel amount per pixel of movement (120 = one notch)
     pub sensitivity: f64,
-    /// 横スクロールを有効にするか
+    /// Enable horizontal scrolling
     pub horizontal: bool,
-    /// 縦スクロールの向きを反転するか
+    /// Invert vertical scroll direction
     pub invert_vertical: bool,
-    /// 横スクロールの向きを反転するか
+    /// Invert horizontal scroll direction
     pub invert_horizontal: bool,
-    /// ホイール量を 120 (1 ノッチ) 単位に蓄積してから送出するか
-    /// (高分解能ホイールを正しく扱えないアプリ向け)
+    /// Accumulate the wheel amount and send it only in units of 120 (one notch)
+    /// (for apps that mishandle high-resolution wheel input)
     pub quantize: bool,
 }
 
@@ -52,7 +52,7 @@ impl Default for GestureConfig {
     }
 }
 
-/// フックから渡す入力イベント。座標はスクリーン座標 (フックの `pt`)。
+/// Input event from the hook. Coordinates are screen coordinates (the hook's `pt`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Input {
     MiddleDown { x: i32, y: i32 },
@@ -60,33 +60,33 @@ pub enum Input {
     Move { x: i32, y: i32 },
 }
 
-/// 送出すべき合成イベント。
+/// Synthetic event to send.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Output {
     MiddleDown,
     MiddleUp,
-    /// 縦ホイール (正: 上方向 = 奥へ)
+    /// Vertical wheel (positive: up = away from the user)
     Wheel(i32),
-    /// 横ホイール (正: 右方向)
+    /// Horizontal wheel (positive: right)
     HWheel(i32),
 }
 
-/// [`Gesture::handle`] の判定結果。
+/// Result of [`Gesture::handle`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Decision {
-    /// 元のイベントを握りつぶすか (true ならフックで 1 を返す)
+    /// Whether to swallow the original event (if true, the hook returns 1)
     pub suppress: bool,
-    /// 代わりに送出する合成イベント (先頭から順に送る)
+    /// Synthetic events to send instead, in order
     pub emit: Vec<Output>,
 }
 
 impl Decision {
-    /// 元のイベントをそのまま通す。
+    /// Let the original event through unchanged.
     fn pass() -> Self {
         Self::default()
     }
 
-    /// 元のイベントを握りつぶし、指定のイベントを送出する。
+    /// Swallow the original event and send the given events.
     fn suppress(emit: Vec<Output>) -> Self {
         Self {
             suppress: true,
@@ -95,31 +95,31 @@ impl Decision {
     }
 }
 
-/// 判定の内部状態。
+/// Internal state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
-    /// 中ボタンが押されていない
+    /// The middle button is not pressed
     Idle,
-    /// 中ボタン down を保留中。`origin` は押下位置、`acc_*` は累積移動量
+    /// Holding the middle down. `origin` is where it was pressed, `acc_*` is the accumulated movement
     Pending {
         origin: (i32, i32),
         acc_x: i32,
         acc_y: i32,
     },
-    /// スクロール中。`rem_*` は未送出のホイール量の端数
+    /// Scrolling. `rem_*` is the remainder of wheel amount not yet sent
     Scrolling {
         origin: (i32, i32),
         rem_x: f64,
         rem_y: f64,
     },
-    /// 中ボタンドラッグを素通し中 (合成した down を送出済み)
+    /// Passing through a middle-button drag (the synthetic down has been sent)
     Dragging,
 }
 
-/// ホイール 1 ノッチ分の量 (WHEEL_DELTA)
+/// Wheel amount of one notch (WHEEL_DELTA)
 const WHEEL_DELTA: f64 = 120.0;
 
-/// 中ボタンジェスチャーの状態機械。
+/// State machine for the middle-button gesture.
 #[derive(Debug, Clone)]
 pub struct Gesture {
     config: GestureConfig,
@@ -127,7 +127,7 @@ pub struct Gesture {
 }
 
 impl Gesture {
-    /// 設定を指定して状態機械を作る。
+    /// Creates a state machine with the given settings.
     pub fn new(config: GestureConfig) -> Self {
         Self {
             config,
@@ -135,7 +135,7 @@ impl Gesture {
         }
     }
 
-    /// 現在の状態の名前を返す (ログ表示用)。
+    /// Returns the name of the current state (for logging).
     pub fn state_name(&self) -> &'static str {
         match self.state {
             State::Idle => "idle",
@@ -145,15 +145,15 @@ impl Gesture {
         }
     }
 
-    /// 中ボタンが押されている間 (保留・スクロール・ドラッグ中) なら true。
+    /// True while the middle button is held (pending, scrolling or dragging).
     pub fn is_active(&self) -> bool {
         self.state != State::Idle
     }
 
-    /// 入力イベントを 1 つ処理し、判定結果を返す。
+    /// Processes one input event and returns the decision.
     pub fn handle(&mut self, input: Input) -> Decision {
         match (self.state, input) {
-            // --- 中ボタン down: 保留を開始する ---
+            // --- Middle down: start holding ---
             (State::Idle, Input::MiddleDown { x, y }) => {
                 self.state = State::Pending {
                     origin: (x, y),
@@ -162,10 +162,10 @@ impl Gesture {
                 };
                 Decision::suppress(vec![])
             }
-            // 押下中にさらに down が来るのは想定外 (別デバイス等)。素通しする
+            // Another down while held is unexpected (e.g. another device). Let it through
             (_, Input::MiddleDown { .. }) => Decision::pass(),
 
-            // --- 保留中の移動: カーソルを固定して移動量を累積する ---
+            // --- Move while pending: keep the cursor still and accumulate ---
             (
                 State::Pending {
                     origin,
@@ -174,13 +174,13 @@ impl Gesture {
                 },
                 Input::Move { x, y },
             ) => {
-                // カーソルは origin に固定されているので、pt - origin がこの移動の差分
+                // The cursor is pinned at origin, so pt - origin is this move's delta
                 let (dx, dy) = (x - origin.0, y - origin.1);
                 let (acc_x, acc_y) = (acc_x + dx, acc_y + dy);
                 let t = i64::from(self.config.threshold);
                 let dist2 = i64::from(acc_x).pow(2) + i64::from(acc_y).pow(2);
                 if dist2 < t * t {
-                    // まだ閾値未満: 保留を続ける
+                    // Still below the threshold: keep holding
                     self.state = State::Pending {
                         origin,
                         acc_x,
@@ -190,7 +190,7 @@ impl Gesture {
                 }
                 match self.config.mode {
                     MoveMode::Scroll => {
-                        // 閾値までの移動分もスクロールに反映して、反応の遅れを感じさせない
+                        // Include the movement up to the threshold so scrolling does not feel delayed
                         self.state = State::Scrolling {
                             origin,
                             rem_x: 0.0,
@@ -200,52 +200,52 @@ impl Gesture {
                         Decision::suppress(emit)
                     }
                     MoveMode::Drag => {
-                        // 保留していた down をここで送出し、以降の移動は素通しする。
-                        // この移動自体は握りつぶす (down より先にカーソルが動かないように)
+                        // Send the held down now and let subsequent moves through.
+                        // Swallow this move itself (so the cursor does not move before the down)
                         self.state = State::Dragging;
                         Decision::suppress(vec![Output::MiddleDown])
                     }
                 }
             }
 
-            // --- スクロール中の移動: ホイールに変換する ---
+            // --- Move while scrolling: convert to wheel ---
             (State::Scrolling { origin, .. }, Input::Move { x, y }) => {
                 let emit = self.scroll(x - origin.0, y - origin.1);
                 Decision::suppress(emit)
             }
 
-            // --- 中ボタン up ---
+            // --- Middle up ---
             (State::Pending { .. }, Input::MiddleUp) => {
-                // 閾値を超えずに離された: 中クリックとして送出する
+                // Released below the threshold: send a middle click
                 self.state = State::Idle;
                 Decision::suppress(vec![Output::MiddleDown, Output::MiddleUp])
             }
             (State::Scrolling { .. }, Input::MiddleUp) => {
-                // スクロールの終了。中ボタンのイベントは一切送らない
+                // End of scrolling. Send no middle-button events at all
                 self.state = State::Idle;
                 Decision::suppress(vec![])
             }
             (State::Dragging, Input::MiddleUp) => {
-                // 合成した down と順序が入れ替わらないよう、up も合成イベントとして送る
+                // Send the up as a synthetic event too, so it cannot overtake the synthetic down
                 self.state = State::Idle;
                 Decision::suppress(vec![Output::MiddleUp])
             }
-            // 押下を見ていない up (起動時に押されていた等) は素通しする
+            // Let through an up whose down we never saw (e.g. held at startup)
             (State::Idle, Input::MiddleUp) => Decision::pass(),
 
-            // --- それ以外の移動 (通常時・ドラッグ中) は素通し ---
+            // --- Other moves (idle / dragging) pass through ---
             (State::Idle | State::Dragging, Input::Move { .. }) => Decision::pass(),
         }
     }
 
-    /// 状態を初期化する (一時停止時など)。
-    #[allow(dead_code)] // トレイメニューの一時停止で使う予定
+    /// Resets the state (e.g. when paused).
+    #[allow(dead_code)] // to be used by the pause item of the tray menu
     pub fn reset(&mut self) {
         self.state = State::Idle;
     }
 
-    /// 移動量 (dx, dy) をホイール量に変換し、送出すべきイベントを返す。
-    /// 1 回で送り切れない端数は状態に持ち越す。
+    /// Converts movement (dx, dy) into wheel amounts and returns the events to send.
+    /// Any remainder that cannot be sent yet is carried over in the state.
     fn scroll(&mut self, dx: i32, dy: i32) -> Vec<Output> {
         let State::Scrolling {
             origin,
@@ -256,7 +256,7 @@ impl Gesture {
             return vec![];
         };
         let cfg = &self.config;
-        // トラックポイントを下に倒す (dy > 0) と下方向スクロール (ホイールは負) にする
+        // Pushing the TrackPoint down (dy > 0) scrolls down (negative wheel)
         let sign_v = if cfg.invert_vertical { 1.0 } else { -1.0 };
         let sign_h = if cfg.invert_horizontal { -1.0 } else { 1.0 };
         let rem_y = rem_y + sign_v * f64::from(dy) * cfg.sensitivity;
@@ -285,11 +285,11 @@ impl Gesture {
     }
 }
 
-/// 蓄積したホイール量を「今送る整数量」と「持ち越す端数」に分ける。
-/// `quantize` が true なら 120 の倍数だけを送る。
+/// Splits an accumulated wheel amount into "integer amount to send now" and "remainder to carry".
+/// If `quantize` is true, only multiples of 120 are sent.
 fn split_wheel(value: f64, quantize: bool) -> (i32, f64) {
     let unit = if quantize { WHEEL_DELTA } else { 1.0 };
-    // 0 方向への切り捨て (逆方向に動かしたときに端数が暴れないように)
+    // Truncate toward zero (so the remainder behaves when the direction reverses)
     let out = (value / unit).trunc() * unit;
     (out as i32, value - out)
 }
@@ -298,7 +298,7 @@ fn split_wheel(value: f64, quantize: bool) -> (i32, f64) {
 mod tests {
     use super::*;
 
-    /// 既定設定で、指定モードの状態機械を作る
+    /// Creates a state machine with default settings and the given mode
     fn gesture(mode: MoveMode) -> Gesture {
         Gesture::new(GestureConfig {
             mode,
@@ -324,7 +324,7 @@ mod tests {
     fn small_jitter_below_threshold_is_still_click() {
         let mut g = gesture(MoveMode::Scroll);
         g.handle(Input::MiddleDown { x: 100, y: 100 });
-        // 1px ずつ 2 回 (累積 2px < 閾値 4px)。カーソルは固定されているので pt は常に origin+1
+        // Two 1px moves (2px total < 4px threshold). The cursor is pinned, so pt is always origin+1
         assert_eq!(
             g.handle(Input::Move { x: 101, y: 100 }),
             Decision::suppress(vec![])
@@ -343,16 +343,16 @@ mod tests {
     fn moving_down_scrolls_down() {
         let mut g = gesture(MoveMode::Scroll);
         g.handle(Input::MiddleDown { x: 0, y: 0 });
-        // 5px 下へ: 閾値超え → 5 * 10 = 50 の下方向スクロール
+        // 5px down: over the threshold -> scroll down by 5 * 10 = 50
         let d = g.handle(Input::Move { x: 0, y: 5 });
         assert!(d.suppress);
         assert_eq!(d.emit, vec![Output::Wheel(-50)]);
-        // 続けて 2px 下へ
+        // Then 2px further down
         assert_eq!(
             g.handle(Input::Move { x: 0, y: 2 }).emit,
             vec![Output::Wheel(-20)]
         );
-        // スクロール後の up では何も送らない
+        // The up after scrolling sends nothing
         assert_eq!(g.handle(Input::MiddleUp), Decision::suppress(vec![]));
     }
 
@@ -389,14 +389,14 @@ mod tests {
             ..GestureConfig::default()
         });
         g.handle(Input::MiddleDown { x: 0, y: 0 });
-        // 5px = 50: まだ 1 ノッチに満たない
+        // 5px = 50: not yet one notch
         assert_eq!(g.handle(Input::Move { x: 0, y: -5 }).emit, vec![]);
-        // さらに 8px = 80 → 計 130: 120 を送って 10 を持ち越す
+        // 8px more = 80 -> 130 total: send 120 and carry 10
         assert_eq!(
             g.handle(Input::Move { x: 0, y: -8 }).emit,
             vec![Output::Wheel(120)]
         );
-        // さらに 11px = 110 → 計 120
+        // 11px more = 110 -> 120 total
         assert_eq!(
             g.handle(Input::Move { x: 0, y: -11 }).emit,
             vec![Output::Wheel(120)]
@@ -411,9 +411,9 @@ mod tests {
             ..GestureConfig::default()
         });
         g.handle(Input::MiddleDown { x: 0, y: 0 });
-        // 1px = 0.5 → まだ 0
+        // 1px = 0.5 -> still 0
         assert_eq!(g.handle(Input::Move { x: 0, y: -1 }).emit, vec![]);
-        // 計 1.0 → 1 を送る
+        // 1.0 total -> send 1
         assert_eq!(
             g.handle(Input::Move { x: 0, y: -1 }).emit,
             vec![Output::Wheel(1)]
@@ -424,14 +424,14 @@ mod tests {
     fn drag_mode_emits_down_then_passes_moves() {
         let mut g = gesture(MoveMode::Drag);
         g.handle(Input::MiddleDown { x: 0, y: 0 });
-        // 閾値超えの移動は握りつぶし、保留していた down を送る
+        // The move crossing the threshold is swallowed and the held down is sent
         assert_eq!(
             g.handle(Input::Move { x: 5, y: 0 }),
             Decision::suppress(vec![Output::MiddleDown])
         );
-        // 以降の移動は素通し
+        // Subsequent moves pass through
         assert_eq!(g.handle(Input::Move { x: 6, y: 0 }), Decision::pass());
-        // up は合成イベントとして送る
+        // The up is sent as a synthetic event
         assert_eq!(
             g.handle(Input::MiddleUp),
             Decision::suppress(vec![Output::MiddleUp])
@@ -443,7 +443,7 @@ mod tests {
     fn idle_events_pass_through() {
         let mut g = gesture(MoveMode::Scroll);
         assert_eq!(g.handle(Input::Move { x: 1, y: 1 }), Decision::pass());
-        // 押下を見ていない up は素通し
+        // An up whose down we never saw passes through
         assert_eq!(g.handle(Input::MiddleUp), Decision::pass());
     }
 

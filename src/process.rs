@@ -1,4 +1,4 @@
-//! プロセスの権限・ウィンドウの所属プロセスの調査 (Windows 専用)。
+//! Inspecting process elevation and the process owning a window (Windows only).
 
 use std::ptr::null_mut;
 
@@ -14,12 +14,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, GetAncestor, GetWindowThreadProcessId, WindowFromPoint,
 };
 
-/// 自プロセスが管理者権限 (昇格済みトークン) で動いているかを返す。
+/// Returns whether this process runs as administrator (elevated token).
 pub fn is_current_elevated() -> bool {
     token_elevated(unsafe { GetCurrentProcess() }) == Some(true)
 }
 
-/// 指定プロセスのトークンが昇格済みかを返す。トークンを開けなければ None。
+/// Returns whether the process token is elevated, or None if the token cannot be opened.
 fn token_elevated(process: HANDLE) -> Option<bool> {
     unsafe {
         let mut token: HANDLE = null_mut();
@@ -40,8 +40,8 @@ fn token_elevated(process: HANDLE) -> Option<bool> {
     }
 }
 
-/// スクリーン座標 (x, y) にあるトップレベルウィンドウの所属プロセスを
-/// 「exe 名 (pid=..., elevated=...)」の形で説明する。動作検証用。
+/// Describes the process owning the top-level window at screen coordinates (x, y)
+/// as "exe name (pid=..., elevated=...)". For troubleshooting.
 pub fn describe_window_at(x: i32, y: i32) -> String {
     unsafe {
         let hwnd: HWND = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);
@@ -54,7 +54,7 @@ pub fn describe_window_at(x: i32, y: i32) -> String {
         if process.is_null() {
             return format!("(pid={pid}, cannot open process)");
         }
-        // exe のフルパスからファイル名だけを取り出す
+        // Take only the file name from the full exe path
         let mut buf = [0u16; 260];
         let mut len = buf.len() as u32;
         let name =
@@ -66,7 +66,7 @@ pub fn describe_window_at(x: i32, y: i32) -> String {
             } else {
                 "?".into()
             };
-        // 非昇格プロセスからは昇格プロセスのトークンを開けないことが多い (= 昇格済みとみなせる)
+        // A non-elevated process usually cannot open an elevated process's token (= likely elevated)
         let elevated = match token_elevated(process) {
             Some(true) => "yes",
             Some(false) => "no",

@@ -1,8 +1,8 @@
-//! 低レベルマウスフック (Windows 専用)。
+//! Low-level mouse hook (Windows only).
 //!
-//! `WH_MOUSE_LL` のコールバックで中ボタン・移動のイベントを [`Gesture`] に渡し、
-//! 判定結果に従って元のイベントを握りつぶし、合成イベントを送出キューに積む。
-//! コールバックはフックを設置したスレッドのメッセージループ内で呼ばれる。
+//! The `WH_MOUSE_LL` callback passes middle-button and move events to [`Gesture`],
+//! swallows the original event as decided, and queues synthetic events for sending.
+//! The callback runs inside the message loop of the thread that installed the hook.
 
 use std::cell::RefCell;
 use std::ptr::{null, null_mut};
@@ -21,7 +21,7 @@ use crate::logger::Logger;
 use crate::output::MAGIC;
 use crate::process;
 
-/// フックのコールバックから参照する状態。
+/// State used by the hook callback.
 struct Context {
     gesture: Gesture,
     out: Sender<Output>,
@@ -30,11 +30,11 @@ struct Context {
 }
 
 thread_local! {
-    // コールバックはフックを設置したスレッドでしか呼ばれないので thread_local で足りる
+    // The callback only runs on the thread that installed the hook, so thread_local is enough
     static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
 }
 
-/// フックを設置し、メッセージループを回す。`WM_QUIT` を受け取るまで戻らない。
+/// Installs the hook and runs the message loop. Does not return until `WM_QUIT`.
 pub fn run(gesture: Gesture, out: Sender<Output>, log: Logger, trace: bool) -> Result<(), String> {
     CONTEXT.with(|c| {
         *c.borrow_mut() = Some(Context {
@@ -53,7 +53,7 @@ pub fn run(gesture: Gesture, out: Sender<Output>, log: Logger, trace: bool) -> R
                 std::io::Error::last_os_error()
             ));
         }
-        // 低レベルフックはメッセージループを回していないと呼ばれない
+        // Low-level hooks are only called while a message loop is running
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
             TranslateMessage(&msg);
@@ -64,20 +64,20 @@ pub fn run(gesture: Gesture, out: Sender<Output>, log: Logger, trace: bool) -> R
     Ok(())
 }
 
-/// `WH_MOUSE_LL` のコールバック。
+/// Callback for `WH_MOUSE_LL`.
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         let info = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
         if handle(wparam as u32, info) {
-            // 0 以外を返すとイベントが握りつぶされる
+            // Returning non-zero swallows the event
             return 1;
         }
     }
     unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) }
 }
 
-/// 1 つのマウスイベントを処理する。握りつぶすなら true を返す。
-/// この関数は処理時間の制限 (LowLevelHooksTimeout) を受けるので、重い処理はしないこと。
+/// Processes one mouse event. Returns true to swallow it.
+/// This is subject to the LowLevelHooksTimeout limit, so do nothing heavy here.
 fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
     CONTEXT.with(|c| {
         let mut c = c.borrow_mut();
@@ -88,7 +88,7 @@ fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
         if ctx.trace {
             trace(ctx, msg, info, injected);
         }
-        // 合成されたイベント (自分の送出分・他のソフトやドライバの送出分) は素通しする
+        // Let injected events through (our own and those from other software or drivers)
         if injected {
             return false;
         }
@@ -112,7 +112,7 @@ fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
     })
 }
 
-/// 動作検証用の詳細ログ。中ボタン・ホイールは常に、移動は中ボタン押下中のみ出力する。
+/// Detailed log for troubleshooting. Middle button and wheel events are always logged; moves only while the middle button is held.
 fn trace(ctx: &Context, msg: u32, info: &MSLLHOOKSTRUCT, injected: bool) {
     let name = match msg {
         WM_MBUTTONDOWN => "WM_MBUTTONDOWN",
@@ -122,7 +122,7 @@ fn trace(ctx: &Context, msg: u32, info: &MSLLHOOKSTRUCT, injected: bool) {
         WM_MOUSEMOVE if ctx.gesture.is_active() => "WM_MOUSEMOVE",
         _ => return,
     };
-    // 送出元: 物理デバイス / nubscroll 自身 / 他のソフト・ドライバ
+    // Source: physical device / nubscroll itself / other software or driver
     let source = match (injected, info.dwExtraInfo == MAGIC) {
         (false, _) => "device",
         (true, true) => "nubscroll",
@@ -133,18 +133,18 @@ fn trace(ctx: &Context, msg: u32, info: &MSLLHOOKSTRUCT, injected: bool) {
         info.pt.x, info.pt.y
     );
     if matches!(msg, WM_MOUSEWHEEL | WM_MOUSEHWHEEL) {
-        // ホイール量は mouseData の上位ワード (符号付き)
+        // The wheel delta is the (signed) high word of mouseData
         line += &format!(" delta={}", (info.mouseData >> 16) as u16 as i16);
     }
     if msg == WM_MOUSEMOVE {
-        // フックの pt は「移動後の予定位置」。実際のカーソル位置と比べると、
-        // 握りつぶし (カーソル固定) が効いているかが分かる
+        // The hook's pt is where the cursor is about to go. Comparing it with the actual
+        // cursor position shows whether swallowing (pinning the cursor) works
         let mut cur = POINT { x: 0, y: 0 };
         unsafe { GetCursorPos(&mut cur) };
         line += &format!(" cursor=({},{})", cur.x, cur.y);
     }
     if msg == WM_MBUTTONDOWN && !injected {
-        // 押下位置のウィンドウが管理者権限かどうか (UIPI の影響を受けるか) を調べる
+        // Check whether the window under the press is elevated (i.e. affected by UIPI)
         line += &format!(
             " target={}",
             process::describe_window_at(info.pt.x, info.pt.y)
