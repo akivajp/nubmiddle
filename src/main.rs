@@ -44,8 +44,8 @@ fn run(opts: config::Options) -> ExitCode {
     let g = &opts.gesture;
     log.log(format!("nubscroll {} started", env!("CARGO_PKG_VERSION")));
     log.log(format!(
-        "settings: mode={:?} threshold={}px sensitivity={} hwheel={} invert_v={} invert_h={} quantize={} trace={}",
-        g.mode, g.threshold, g.sensitivity, g.horizontal, g.invert_vertical,
+        "settings: mode={:?} threshold={}px sensitivity={} hwheel={} axis_lock={} invert_v={} invert_h={} quantize={} trace={}",
+        g.mode, g.threshold, g.sensitivity, g.horizontal, g.axis_lock, g.invert_vertical,
         g.invert_horizontal, g.quantize, opts.trace
     ));
     if let Some(path) = &opts.log_file {

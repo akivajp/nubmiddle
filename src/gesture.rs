@@ -29,6 +29,10 @@ pub struct GestureConfig {
     pub sensitivity: f64,
     /// Enable horizontal scrolling
     pub horizontal: bool,
+    /// Scroll only along the dominant axis of the movement that started scrolling.
+    /// Small sideways drift otherwise mixes horizontal wheel events into vertical scrolling,
+    /// which some apps (e.g. Windows Settings) turn into a violently shaking scroll position
+    pub axis_lock: bool,
     /// Invert vertical scroll direction
     pub invert_vertical: bool,
     /// Invert horizontal scroll direction
@@ -45,6 +49,7 @@ impl Default for GestureConfig {
             threshold: 4,
             sensitivity: 10.0,
             horizontal: true,
+            axis_lock: true,
             invert_vertical: false,
             invert_horizontal: false,
             quantize: false,
@@ -95,6 +100,14 @@ impl Decision {
     }
 }
 
+/// Axes a scroll gesture is allowed to move along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Axes {
+    Both,
+    Vertical,
+    Horizontal,
+}
+
 /// Internal state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
@@ -106,9 +119,10 @@ enum State {
         acc_x: i32,
         acc_y: i32,
     },
-    /// Scrolling. `rem_*` is the remainder of wheel amount not yet sent
+    /// Scrolling along `axes`. `rem_*` is the remainder of wheel amount not yet sent
     Scrolling {
         origin: (i32, i32),
+        axes: Axes,
         rem_x: f64,
         rem_y: f64,
     },
@@ -193,6 +207,7 @@ impl Gesture {
                         // Include the movement up to the threshold so scrolling does not feel delayed
                         self.state = State::Scrolling {
                             origin,
+                            axes: self.choose_axes(acc_x, acc_y),
                             rem_x: 0.0,
                             rem_y: 0.0,
                         };
@@ -244,11 +259,27 @@ impl Gesture {
         self.state = State::Idle;
     }
 
+    /// Decides the scroll axes from the movement accumulated until the threshold was crossed.
+    fn choose_axes(&self, acc_x: i32, acc_y: i32) -> Axes {
+        let cfg = &self.config;
+        if !cfg.horizontal {
+            Axes::Vertical
+        } else if !cfg.axis_lock {
+            Axes::Both
+        } else if acc_x.abs() > acc_y.abs() {
+            Axes::Horizontal
+        } else {
+            // Ties go to vertical, which is by far the more common direction
+            Axes::Vertical
+        }
+    }
+
     /// Converts movement (dx, dy) into wheel amounts and returns the events to send.
     /// Any remainder that cannot be sent yet is carried over in the state.
     fn scroll(&mut self, dx: i32, dy: i32) -> Vec<Output> {
         let State::Scrolling {
             origin,
+            axes,
             rem_x,
             rem_y,
         } = self.state
@@ -259,17 +290,23 @@ impl Gesture {
         // Pushing the TrackPoint down (dy > 0) scrolls down (negative wheel)
         let sign_v = if cfg.invert_vertical { 1.0 } else { -1.0 };
         let sign_h = if cfg.invert_horizontal { -1.0 } else { 1.0 };
-        let rem_y = rem_y + sign_v * f64::from(dy) * cfg.sensitivity;
-        let rem_x = if cfg.horizontal {
-            rem_x + sign_h * f64::from(dx) * cfg.sensitivity
-        } else {
+        // Movement along a disabled axis is dropped
+        let rem_y = if axes == Axes::Horizontal {
             0.0
+        } else {
+            rem_y + sign_v * f64::from(dy) * cfg.sensitivity
+        };
+        let rem_x = if axes == Axes::Vertical {
+            0.0
+        } else {
+            rem_x + sign_h * f64::from(dx) * cfg.sensitivity
         };
 
         let (out_y, rem_y) = split_wheel(rem_y, cfg.quantize);
         let (out_x, rem_x) = split_wheel(rem_x, cfg.quantize);
         self.state = State::Scrolling {
             origin,
+            axes,
             rem_x,
             rem_y,
         };
@@ -359,6 +396,7 @@ mod tests {
     #[test]
     fn horizontal_scroll_and_inversion() {
         let mut g = Gesture::new(GestureConfig {
+            axis_lock: false,
             invert_vertical: true,
             invert_horizontal: true,
             ..GestureConfig::default()
@@ -366,6 +404,52 @@ mod tests {
         g.handle(Input::MiddleDown { x: 0, y: 0 });
         let d = g.handle(Input::Move { x: 4, y: 4 });
         assert_eq!(d.emit, vec![Output::Wheel(40), Output::HWheel(-40)]);
+    }
+
+    #[test]
+    fn axis_lock_vertical_drops_sideways_drift() {
+        let mut g = gesture(MoveMode::Scroll);
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        // Mostly upward: locked to vertical
+        assert_eq!(
+            g.handle(Input::Move { x: -1, y: -5 }).emit,
+            vec![Output::Wheel(50)]
+        );
+        // Sideways drift (even larger than the vertical part) sends no horizontal wheel
+        assert_eq!(
+            g.handle(Input::Move { x: -3, y: -2 }).emit,
+            vec![Output::Wheel(20)]
+        );
+        assert_eq!(g.handle(Input::Move { x: 2, y: 0 }).emit, vec![]);
+    }
+
+    #[test]
+    fn axis_lock_horizontal_drops_vertical_drift() {
+        let mut g = gesture(MoveMode::Scroll);
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        // Mostly rightward: locked to horizontal
+        assert_eq!(
+            g.handle(Input::Move { x: 5, y: 1 }).emit,
+            vec![Output::HWheel(50)]
+        );
+        assert_eq!(
+            g.handle(Input::Move { x: 1, y: 4 }).emit,
+            vec![Output::HWheel(10)]
+        );
+    }
+
+    #[test]
+    fn axis_lock_is_per_gesture() {
+        let mut g = gesture(MoveMode::Scroll);
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        g.handle(Input::Move { x: 0, y: 5 });
+        g.handle(Input::MiddleUp);
+        // The next gesture decides its axis again
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        assert_eq!(
+            g.handle(Input::Move { x: 5, y: 0 }).emit,
+            vec![Output::HWheel(50)]
+        );
     }
 
     #[test]

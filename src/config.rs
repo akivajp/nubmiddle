@@ -19,6 +19,8 @@ Options:
                            a middle click (default: 4)
     --sensitivity <N>      Wheel amount per pixel; 120 = one notch (default: 10)
     --no-hwheel            Disable horizontal scrolling
+    --no-axis-lock         Scroll both axes at once (by default each scroll is
+                           locked to the axis it started along)
     --invert-v             Invert vertical scroll direction
     --invert-h             Invert horizontal scroll direction
     --quantize             Accumulate wheel amount and send it in units of 120
@@ -98,6 +100,7 @@ where
                 }
             }
             "--no-hwheel" => gesture.horizontal = false,
+            "--no-axis-lock" => gesture.axis_lock = false,
             "--invert-v" => gesture.invert_vertical = true,
             "--invert-h" => gesture.invert_horizontal = true,
             "--quantize" => gesture.quantize = true,
@@ -154,6 +157,7 @@ mod tests {
             "--sensitivity",
             "2.5",
             "--no-hwheel",
+            "--no-axis-lock",
             "--invert-v",
             "--invert-h",
             "--quantize",
@@ -168,7 +172,9 @@ mod tests {
         assert_eq!(g.mode, MoveMode::Drag);
         assert_eq!(g.threshold, 8);
         assert_eq!(g.sensitivity, 2.5);
-        assert!(!g.horizontal && g.invert_vertical && g.invert_horizontal && g.quantize);
+        assert!(
+            !g.horizontal && !g.axis_lock && g.invert_vertical && g.invert_horizontal && g.quantize
+        );
         assert_eq!(opts.log_file, Some(PathBuf::from("a.log")));
         assert!(opts.trace);
     }

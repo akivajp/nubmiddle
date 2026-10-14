@@ -39,6 +39,7 @@ nubscroll [OPTIONS]
 | `--threshold <PX>` | Movement distance beyond which it is no longer a middle click (default: 4) |
 | `--sensitivity <N>` | Wheel amount per pixel; 120 = one notch (default: 10) |
 | `--no-hwheel` | Disable horizontal scrolling |
+| `--no-axis-lock` | Scroll both axes at once. By default each scroll is locked to the axis it started along, because sideways drift mixed into vertical scrolling makes some apps (e.g. Windows Settings) shake |
 | `--invert-v` / `--invert-h` | Invert vertical / horizontal scroll direction |
 | `--quantize` | Send wheel events only in whole notches (for apps that mishandle high-resolution wheel input) |
 | `--log <FILE>` | Also append the log to a file |
