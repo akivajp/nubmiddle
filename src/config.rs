@@ -25,6 +25,8 @@ Options:
     --invert-h             Invert horizontal scroll direction
     --quantize             Accumulate wheel amount and send it in units of 120
     --no-cursor            Do not change the mouse cursor while scrolling
+    --hold-delay <MS>      How long the middle button must be held before the
+                           cursor shows the four-way scroll arrow (default: 200)
     --log <FILE>           Also append the log to FILE
     --trace                Log middle button, wheel and in-gesture move events in
                            detail, including events injected by other software or
@@ -43,6 +45,8 @@ pub struct Options {
     pub trace: bool,
     /// Whether to show an arrow cursor for the scroll axis while scrolling
     pub cursor: bool,
+    /// Milliseconds the middle button must be held before the four-way arrow cursor shows
+    pub hold_delay_ms: u64,
 }
 
 /// Result of argument parsing.
@@ -63,6 +67,7 @@ where
     let mut log_file = None;
     let mut trace = false;
     let mut cursor = true;
+    let mut hold_delay_ms = 200;
 
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -111,6 +116,7 @@ where
             "--log" => log_file = Some(PathBuf::from(value()?)),
             "--trace" => trace = true,
             "--no-cursor" => cursor = false,
+            "--hold-delay" => hold_delay_ms = parse_num(&name, &value()?)?,
             _ => return Err(format!("unknown option: {arg} (see --help)")),
         }
     }
@@ -119,6 +125,7 @@ where
         log_file,
         trace,
         cursor,
+        hold_delay_ms,
     }))
 }
 
@@ -147,6 +154,7 @@ mod tests {
         assert_eq!(opts.log_file, None);
         assert!(!opts.trace);
         assert!(opts.cursor);
+        assert_eq!(opts.hold_delay_ms, 200);
     }
 
     #[test]
@@ -172,6 +180,8 @@ mod tests {
             "a.log",
             "--trace",
             "--no-cursor",
+            "--hold-delay",
+            "350",
         ])
         .unwrap() else {
             panic!("expected Run")
@@ -186,6 +196,7 @@ mod tests {
         assert_eq!(opts.log_file, Some(PathBuf::from("a.log")));
         assert!(opts.trace);
         assert!(!opts.cursor);
+        assert_eq!(opts.hold_delay_ms, 350);
     }
 
     #[test]
@@ -195,6 +206,7 @@ mod tests {
         assert!(parse(&["--threshold", "-1"]).is_err());
         assert!(parse(&["--sensitivity", "0"]).is_err());
         assert!(parse(&["--sensitivity", "abc"]).is_err());
+        assert!(parse(&["--hold-delay", "-1"]).is_err());
         assert!(parse(&["--unknown"]).is_err());
     }
 }

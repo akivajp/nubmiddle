@@ -16,7 +16,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
 };
 
-use crate::gesture::{Axes, Gesture, Input, Output};
+use crate::cursor::Indicator;
+use crate::gesture::{Gesture, Input, Output};
 use crate::logger::Logger;
 use crate::output::MAGIC;
 use crate::process;
@@ -26,7 +27,7 @@ struct Context {
     gesture: Gesture,
     out: Sender<Output>,
     /// Scroll cursor requests (None if the scroll cursor is disabled)
-    cursor: Option<Sender<Option<Axes>>>,
+    cursor: Option<Sender<Indicator>>,
     log: Logger,
     trace: bool,
 }
@@ -40,7 +41,7 @@ thread_local! {
 pub fn run(
     gesture: Gesture,
     out: Sender<Output>,
-    cursor: Option<Sender<Option<Axes>>>,
+    cursor: Option<Sender<Indicator>>,
     log: Logger,
     trace: bool,
 ) -> Result<(), String> {
@@ -108,23 +109,32 @@ fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
             WM_MOUSEMOVE => Input::Move { x, y },
             _ => return false,
         };
-        let (before, axes_before) = (ctx.gesture.state_name(), ctx.gesture.scroll_axes());
+        let (before, indicator_before) = (ctx.gesture.state_name(), indicator(&ctx.gesture));
         let decision = ctx.gesture.handle(input);
-        let (after, axes_after) = (ctx.gesture.state_name(), ctx.gesture.scroll_axes());
+        let (after, indicator_after) = (ctx.gesture.state_name(), indicator(&ctx.gesture));
         if before != after {
             ctx.log.log(format!("state: {before} -> {after}"));
         }
-        // Switch the cursor when scrolling starts or ends (done on the cursor thread)
-        if axes_before != axes_after
+        // Switch the cursor when holding / scrolling starts or ends (done on the cursor thread)
+        if indicator_before != indicator_after
             && let Some(cursor) = &ctx.cursor
         {
-            let _ = cursor.send(axes_after);
+            let _ = cursor.send(indicator_after);
         }
         for out in decision.emit {
             let _ = ctx.out.send(out);
         }
         decision.suppress
     })
+}
+
+/// What the cursor should show for the gesture state.
+fn indicator(gesture: &Gesture) -> Indicator {
+    match gesture.scroll_axes() {
+        Some(axes) => Indicator::Scroll(axes),
+        None if gesture.state_name() == "pending" => Indicator::Hold,
+        None => Indicator::Off,
+    }
 }
 
 /// Detailed log for troubleshooting. Middle button and wheel events are always logged; moves only while the middle button is held.

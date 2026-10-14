@@ -43,6 +43,7 @@ nubscroll [OPTIONS]
 | `--invert-v` / `--invert-h` | Invert vertical / horizontal scroll direction |
 | `--quantize` | Send wheel events only in whole notches (for apps that mishandle high-resolution wheel input) |
 | `--no-cursor` | Do not change the mouse cursor while scrolling. By default it becomes a vertical / horizontal arrow showing the scroll axis |
+| `--hold-delay <MS>` | How long the middle button must be held before the cursor shows the four-way scroll arrow, so a quick middle click does not flash it (default: 200) |
 | `--log <FILE>` | Also append the log to a file |
 | `--trace` | Log middle button / wheel events in detail, including events injected by drivers (for troubleshooting) |
 | `-h`, `--help` | Show help |

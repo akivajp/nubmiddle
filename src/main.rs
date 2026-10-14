@@ -48,9 +48,9 @@ fn run(opts: config::Options) -> ExitCode {
     let g = &opts.gesture;
     log.log(format!("nubscroll {} started", env!("CARGO_PKG_VERSION")));
     log.log(format!(
-        "settings: mode={:?} threshold={}px sensitivity={} hwheel={} axis_lock={} invert_v={} invert_h={} quantize={} cursor={} trace={}",
+        "settings: mode={:?} threshold={}px sensitivity={} hwheel={} axis_lock={} invert_v={} invert_h={} quantize={} cursor={} hold_delay={}ms trace={}",
         g.mode, g.threshold, g.sensitivity, g.horizontal, g.axis_lock, g.invert_vertical,
-        g.invert_horizontal, g.quantize, opts.cursor, opts.trace
+        g.invert_horizontal, g.quantize, opts.cursor, opts.hold_delay_ms, opts.trace
     ));
     if let Some(path) = &opts.log_file {
         log.log(format!("log file: {}", path.display()));
@@ -70,7 +70,10 @@ fn run(opts: config::Options) -> ExitCode {
         }
     };
     let cursor = if opts.cursor {
-        match cursor::start(log.clone()) {
+        match cursor::start(
+            log.clone(),
+            std::time::Duration::from_millis(opts.hold_delay_ms),
+        ) {
             Ok(tx) => Some(tx),
             Err(e) => {
                 eprintln!("error: cannot start cursor thread: {e}");

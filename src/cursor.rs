@@ -6,8 +6,9 @@
 //! which also repairs cursors left behind if a previous run was killed while scrolling.
 
 use std::ptr::null_mut;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -37,29 +38,69 @@ const REPLACED: [SYSTEM_CURSOR_ID; 13] = [
     OCR_APPSTARTING,
 ];
 
+/// What the cursor should show, sent to the cursor thread whenever it changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Indicator {
+    /// Normal cursors
+    Off,
+    /// The middle button is held but not moved yet: show the four-way arrow after the hold delay
+    /// (a quick middle click then never flashes the cursor)
+    Hold,
+    /// Scrolling along the given axes
+    Scroll(Axes),
+}
+
 /// Restores the user's system cursors. Safe to call at any time and from any thread.
 pub fn restore() -> bool {
     unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, null_mut(), 0) != 0 }
 }
 
 /// Starts the cursor thread and returns the sending end of its queue.
-/// Send `Some(axes)` when scrolling starts and `None` when it ends.
-pub fn start(log: Logger) -> std::io::Result<Sender<Option<Axes>>> {
-    let (tx, rx) = mpsc::channel::<Option<Axes>>();
+/// `hold_delay` is how long the middle button must be held before [`Indicator::Hold`] shows.
+pub fn start(log: Logger, hold_delay: Duration) -> std::io::Result<Sender<Indicator>> {
+    let (tx, rx) = mpsc::channel::<Indicator>();
     thread::Builder::new()
         .name("cursor".into())
         .spawn(move || {
             // Repair cursors left behind by a previous run before taking copies of the originals
             restore();
             let arrows = Arrows::load();
-            for axes in rx {
-                let ok = match axes {
-                    Some(axes) => arrows.show(axes),
-                    None => restore(),
+            // Whether the system cursors are currently replaced (skip needless restores on clicks)
+            let mut replaced = false;
+            // When a pending Hold should be shown
+            let mut hold_at: Option<Instant> = None;
+            loop {
+                // Wait for the next request, or until a pending Hold is due
+                let request = match hold_at {
+                    None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                    Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())),
+                };
+                let target = match request {
+                    Ok(Indicator::Hold) => {
+                        hold_at = Some(Instant::now() + hold_delay);
+                        continue;
+                    }
+                    Ok(Indicator::Scroll(axes)) => Some(axes),
+                    Ok(Indicator::Off) => None,
+                    // The button is still held after the delay: show the four-way arrow
+                    Err(RecvTimeoutError::Timeout) => Some(Axes::Both),
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+                hold_at = None;
+                let ok = match target {
+                    Some(axes) => {
+                        replaced = true;
+                        arrows.show(axes)
+                    }
+                    None if replaced => {
+                        replaced = false;
+                        restore()
+                    }
+                    None => true,
                 };
                 if !ok {
                     log.log(format!(
-                        "[warn] cannot change cursor to {axes:?} (error={})",
+                        "[warn] cannot change cursor to {target:?} (error={})",
                         std::io::Error::last_os_error()
                     ));
                 }
