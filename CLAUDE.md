@@ -24,4 +24,4 @@ This project targets international users, so:
   `LowLevelHooksTimeout`. Logging and `SendInput` run on their own threads.
 - Events we inject carry `output::MAGIC` in `dwExtraInfo`; all injected events are passed through untouched.
 - Background and design discussion (Japanese) live in the user's Obsidian Vault:
-  `01_プロジェクト/トラックポイント中ボタンツール/`.
+  `01_プロジェクト/開発アイディア/nubmiddle/`.
