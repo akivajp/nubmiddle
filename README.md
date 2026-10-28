@@ -10,8 +10,7 @@ A tiny Windows tray tool that makes the ThinkPad TrackPoint middle button do **b
 Lenovo's official driver forces you to choose one or the other. Linux (Xorg / libinput) has done both
 out of the box for years; nubscroll brings the same behavior to Windows, with nothing else bundled.
 
-> **Status: early prototype.** It currently runs as a console program. The tray icon, the built-in
-> autostart toggle (with administrator rights) and the settings file are not implemented yet —
+> **Status: early prototype.** The settings file and release builds are not available yet —
 > see [Roadmap](#roadmap).
 
 ## Why another tool?
@@ -32,6 +31,17 @@ vendor API), and to manage its own autostart — including fixing it up automati
 ```
 nubscroll [OPTIONS]
 ```
+
+nubscroll stays in the notification area (system tray) without a console window. Its menu has:
+
+- **Start with Windows (as administrator)**: registers a Task Scheduler task that starts nubscroll at
+  logon with administrator rights (one UAC prompt when toggling, none at logon). The task reuses the
+  options of the running instance. If the exe has been moved, the item turns into
+  "update to this exe"; an instance running as administrator fixes the task by itself.
+- **Pause**: lets every mouse event through until unchecked.
+- **Quit**
+
+Only one instance runs at a time. When started from a console, `--help` and the log are printed there.
 
 | Option | Description |
 |---|---|
@@ -58,8 +68,8 @@ is an event synthesized by other software or a driver.
 ### Elevated windows
 
 Because of Windows UIPI, a normal process cannot scroll windows running as administrator
-(e.g. an elevated terminal). Run nubscroll as administrator to make it work there too.
-The planned autostart feature will do this for you.
+(e.g. an elevated terminal). Run nubscroll as administrator to make it work there too;
+"Start with Windows" in the tray menu does this for you.
 
 ## How it works
 
@@ -91,9 +101,9 @@ cargo test
 
 - [x] Core: middle click / scroll / drag decision, wheel output (console prototype)
 - [x] Scroll cursor: show a vertical / horizontal arrow cursor while scrolling, so the locked axis is visible
-- [ ] Tray icon with menu: autostart (checkbox), pause (checkbox), settings, quit
-- [ ] Autostart via Task Scheduler with highest privileges, toggled from the tray menu
-- [ ] Self-repair: re-register the task when the exe has been moved or replaced
+- [x] Tray icon with menu: autostart (checkbox), pause (checkbox), settings, quit
+- [x] Autostart via Task Scheduler with highest privileges, toggled from the tray menu
+- [x] Self-repair: re-register the task when the exe has been moved or replaced
 - [ ] Settings file (ini next to the exe, for portable use)
 - [ ] Per-process exclusion list (Blender, CAD, ...)
 - [ ] Apply only to the TrackPoint, not to external mice (Raw Input)

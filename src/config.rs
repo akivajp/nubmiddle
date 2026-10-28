@@ -32,6 +32,15 @@ Options:
                            detail, including events injected by other software or
                            drivers (for troubleshooting)
     -h, --help             Show this help
+
+nubscroll stays in the notification area (system tray). Use its menu to pause,
+quit, or start it automatically at logon with administrator rights.
+
+Internal options (used by the tray menu through a UAC prompt):
+    --register-autostart <USER> [ARGS...]
+                           Register the logon task for USER, running this exe
+                           with ARGS
+    --unregister-autostart Delete the logon task
 ";
 
 /// Runtime options.
@@ -56,6 +65,10 @@ pub enum Command {
     Help,
     /// Run with the given options
     Run(Options),
+    /// Register the autostart task for `user`, running this exe with `args`
+    RegisterAutostart { user: String, args: Vec<String> },
+    /// Delete the autostart task
+    UnregisterAutostart,
 }
 
 /// Parses command-line arguments (excluding the program name).
@@ -85,6 +98,15 @@ where
         };
         match name.as_str() {
             "-h" | "--help" => return Ok(Command::Help),
+            // Everything after the user is passed verbatim to the registered task
+            "--register-autostart" => {
+                let user = value()?;
+                return Ok(Command::RegisterAutostart {
+                    user,
+                    args: args.collect(),
+                });
+            }
+            "--unregister-autostart" => return Ok(Command::UnregisterAutostart),
             "--mode" => {
                 gesture.mode = match value()?.as_str() {
                     "scroll" => MoveMode::Scroll,
@@ -197,6 +219,36 @@ mod tests {
         assert!(opts.trace);
         assert!(!opts.cursor);
         assert_eq!(opts.hold_delay_ms, 350);
+    }
+
+    #[test]
+    fn autostart_commands() {
+        assert_eq!(
+            parse(&[
+                "--register-autostart",
+                r"PC\me",
+                "--trace",
+                "--log",
+                "a b.log"
+            ])
+            .unwrap(),
+            Command::RegisterAutostart {
+                user: r"PC\me".into(),
+                args: vec!["--trace".into(), "--log".into(), "a b.log".into()],
+            }
+        );
+        assert_eq!(
+            parse(&["--register-autostart", "me"]).unwrap(),
+            Command::RegisterAutostart {
+                user: "me".into(),
+                args: vec![],
+            }
+        );
+        assert!(parse(&["--register-autostart"]).is_err());
+        assert_eq!(
+            parse(&["--unregister-autostart"]).unwrap(),
+            Command::UnregisterAutostart
+        );
     }
 
     #[test]

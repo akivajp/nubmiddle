@@ -262,7 +262,6 @@ impl Gesture {
     }
 
     /// Resets the state (e.g. when paused).
-    #[allow(dead_code)] // to be used by the pause item of the tray menu
     pub fn reset(&mut self) {
         self.state = State::Idle;
     }

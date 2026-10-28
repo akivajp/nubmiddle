@@ -30,6 +30,8 @@ struct Context {
     cursor: Option<Sender<Indicator>>,
     log: Logger,
     trace: bool,
+    /// While paused, every event passes through untouched
+    paused: bool,
 }
 
 thread_local! {
@@ -52,6 +54,7 @@ pub fn run(
             cursor,
             log,
             trace,
+            paused: false,
         })
     });
     unsafe {
@@ -72,6 +75,20 @@ pub fn run(
         UnhookWindowsHookEx(hook);
     }
     Ok(())
+}
+
+/// Pauses or resumes processing. Must be called on the thread running [`run`] (the tray window's thread).
+pub fn set_paused(paused: bool) {
+    CONTEXT.with(|c| {
+        if let Some(ctx) = c.borrow_mut().as_mut() {
+            ctx.paused = paused;
+            ctx.gesture.reset();
+            if let Some(cursor) = &ctx.cursor {
+                let _ = cursor.send(Indicator::Off);
+            }
+            ctx.log.log(if paused { "paused" } else { "resumed" });
+        }
+    });
 }
 
 /// Callback for `WH_MOUSE_LL`.
@@ -99,7 +116,7 @@ fn handle(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
             trace(ctx, msg, info, injected);
         }
         // Let injected events through (our own and those from other software or drivers)
-        if injected {
+        if injected || ctx.paused {
             return false;
         }
         let (x, y) = (info.pt.x, info.pt.y);
