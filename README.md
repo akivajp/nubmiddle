@@ -1,17 +1,25 @@
-# nubscroll
+# nubmiddle
 
 [日本語](README.ja.md)
 
-A tiny Windows tray tool that makes the ThinkPad TrackPoint middle button do **both**:
+A tiny Windows tray tool that gives the middle button of a TrackPoint-style pointing stick its
+middle click back, without giving up scrolling:
 
 - **Click** the middle button → a normal middle click (close tab, open link in new tab, ...)
-- **Hold** the middle button and **push the TrackPoint** → scroll vertically / horizontally
+- **Hold** the middle button and **push the stick** → scroll vertically / horizontally
 
-Lenovo's official driver forces you to choose one or the other. Linux (Xorg / libinput) has done both
-out of the box for years; nubscroll brings the same behavior to Windows, with nothing else bundled.
+Lenovo's official driver forces you to choose one or the other, and recent ThinkPads default to scrolling. Linux (Xorg / libinput) has done both
+out of the box for years; nubmiddle brings the same behavior to Windows, with nothing else bundled.
 
 > **Status: early prototype.** The settings file and release builds are not available yet —
 > see [Roadmap](#roadmap).
+
+### Supported devices
+
+nubmiddle works on the OS mouse-event level, so it should work with any pointing stick whose middle
+button reaches Windows as a real middle button. Tested with ThinkPad TrackPoint keyboards
+(SK-8855 and TrackPoint Keyboard II). Other sticks such as the HHKB Studio are expected to work but
+are untested — reports are welcome.
 
 ## Why another tool?
 
@@ -23,18 +31,18 @@ Existing options each fall short in some way:
 | W10Wheel.NET | Works, but is a general wheel simulator with many unrelated features. Autostart with admin rights must be set up by hand. |
 | X-Mouse Button Control / AutoHotkey | Possible, but general-purpose and need manual configuration. |
 
-nubscroll aims to be single-purpose, vendor-independent (it works on the OS mouse event level, not a
+nubmiddle aims to be single-purpose, vendor-independent (it works on the OS mouse event level, not a
 vendor API), and to manage its own autostart — including fixing it up automatically when the exe is moved.
 
 ## Usage
 
 ```
-nubscroll [OPTIONS]
+nubmiddle [OPTIONS]
 ```
 
-nubscroll stays in the notification area (system tray) without a console window. Its menu has:
+nubmiddle stays in the notification area (system tray) without a console window. Its menu has:
 
-- **Start with Windows (as administrator)**: registers a Task Scheduler task that starts nubscroll at
+- **Start with Windows (as administrator)**: registers a Task Scheduler task that starts nubmiddle at
   logon with administrator rights (one UAC prompt when toggling, none at logon). The task reuses the
   options of the running instance. If the exe has been moved, the item turns into
   "update to this exe"; an instance running as administrator fixes the task by itself.
@@ -61,14 +69,14 @@ Only one instance runs at a time. When started from a console, `--help` and the 
 ### Driver setting
 
 Set the middle button to **"middle click"** (not "scroll") in the Lenovo / Synaptics / ELAN driver settings.
-Otherwise the driver may convert the middle button into wheel events itself, and nubscroll never sees it.
+Otherwise the driver may convert the middle button into wheel events itself, and nubmiddle never sees it.
 `--trace` shows what the OS actually receives: `source=device` is a physical event, `source=injected`
 is an event synthesized by other software or a driver.
 
 ### Elevated windows
 
 Because of Windows UIPI, a normal process cannot scroll windows running as administrator
-(e.g. an elevated terminal). Run nubscroll as administrator to make it work there too;
+(e.g. an elevated terminal). Run nubmiddle as administrator to make it work there too;
 "Start with Windows" in the tray menu does this for you.
 
 ## How it works
@@ -78,17 +86,17 @@ Because of Windows UIPI, a normal process cannot scroll windows running as admin
    Once they exceed the threshold, the movement is converted into wheel events with `SendInput`.
 3. If the button is released before that, the held down/up pair is replayed as a middle click.
 
-Events sent by nubscroll itself are tagged via `dwExtraInfo` so the hook does not process them again.
+Events sent by nubmiddle itself are tagged via `dwExtraInfo` so the hook does not process them again.
 
 ## Building
 
-nubscroll is written in Rust. It can be cross-compiled from Linux / WSL:
+nubmiddle is written in Rust. It can be cross-compiled from Linux / WSL:
 
 ```sh
 sudo apt install mingw-w64
 rustup target add x86_64-pc-windows-gnu
 cargo win --release          # alias for: cargo build --target x86_64-pc-windows-gnu
-# → target/x86_64-pc-windows-gnu/release/nubscroll.exe
+# → target/x86_64-pc-windows-gnu/release/nubmiddle.exe
 ```
 
 The decision logic is OS-independent, so the tests run on any platform:

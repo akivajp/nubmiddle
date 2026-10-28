@@ -164,10 +164,10 @@ fn trace(ctx: &Context, msg: u32, info: &MSLLHOOKSTRUCT, injected: bool) {
         WM_MOUSEMOVE if ctx.gesture.is_active() => "WM_MOUSEMOVE",
         _ => return,
     };
-    // Source: physical device / nubscroll itself / other software or driver
+    // Source: physical device / nubmiddle itself / other software or driver
     let source = match (injected, info.dwExtraInfo == MAGIC) {
         (false, _) => "device",
-        (true, true) => "nubscroll",
+        (true, true) => "nubmiddle",
         (true, false) => "injected",
     };
     let mut line = format!(

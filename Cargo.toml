@@ -1,10 +1,10 @@
 [package]
-name = "nubscroll"
+name = "nubmiddle"
 version = "0.1.0"
 edition = "2024"
-description = "Windows tray tool that makes the ThinkPad TrackPoint middle button do both middle click and scrolling"
+description = "Windows tray tool that gives the TrackPoint-style pointing stick middle button both middle click and scrolling"
 license = "MIT"
-repository = "https://github.com/akivajp/nubscroll"
+repository = "https://github.com/akivajp/nubmiddle"
 
 # The Windows API is a dependency only when building for Windows.
 # The decision logic (gesture) and options (config) are OS-independent, so `cargo test` works on Linux too.

@@ -1,4 +1,4 @@
-//! nubscroll: a Windows tray tool that makes the TrackPoint middle button do both middle click and scrolling.
+//! nubmiddle: a Windows tray tool that makes the TrackPoint middle button do both middle click and scrolling.
 //!
 //! Built as a GUI program so that no console window opens; when started from a console it
 //! attaches to it, so `--help` and the log are still printed there.
@@ -81,7 +81,11 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
 
     // Only one instance: a second hook would process every event twice
     if !single_instance() {
-        report_error("nubscroll is already running (see the notification area)");
+        report_error("nubmiddle is already running (see the notification area)");
+        return ExitCode::FAILURE;
+    }
+    if legacy_running() {
+        report_error("an earlier version (nubscroll) is running: quit it from its tray menu first");
         return ExitCode::FAILURE;
     }
     let log = match logger::Logger::start(opts.log_file.as_deref()) {
@@ -92,7 +96,7 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         }
     };
     let g = &opts.gesture;
-    log.log(format!("nubscroll {} started", env!("CARGO_PKG_VERSION")));
+    log.log(format!("nubmiddle {} started", env!("CARGO_PKG_VERSION")));
     log.log(format!(
         "settings: mode={:?} threshold={}px sensitivity={} hwheel={} axis_lock={} invert_v={} invert_h={} quantize={} cursor={} hold_delay={}ms trace={}",
         g.mode, g.threshold, g.sensitivity, g.horizontal, g.axis_lock, g.invert_vertical,
@@ -161,7 +165,7 @@ fn single_instance() -> bool {
     use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, GetLastError};
     use windows_sys::Win32::System::Threading::CreateMutexW;
 
-    let name: Vec<u16> = "Local\\nubscroll.running"
+    let name: Vec<u16> = "Local\\nubmiddle.running"
         .encode_utf16()
         .chain(Some(0))
         .collect();
@@ -171,6 +175,27 @@ fn single_instance() -> bool {
         let err = GetLastError();
         // An elevated instance's mutex cannot even be opened by a normal one (access denied)
         !(err == ERROR_ALREADY_EXISTS || (handle.is_null() && err == ERROR_ACCESS_DENIED))
+    }
+}
+
+/// Whether an earlier version (called nubscroll) is running, judged by its mutex.
+#[cfg(windows)]
+fn legacy_running() -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, GetLastError};
+    use windows_sys::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+
+    let name: Vec<u16> = "Local\\nubscroll.running"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    unsafe {
+        let handle = OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, name.as_ptr());
+        if handle.is_null() {
+            // An elevated instance's mutex exists but cannot be opened by a normal one
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        CloseHandle(handle);
+        true
     }
 }
 
@@ -192,7 +217,7 @@ unsafe extern "system" fn on_console_ctrl(ctrl_type: u32) -> windows_sys::core::
 /// Does not run outside Windows (only the logic tests do).
 #[cfg(not(windows))]
 fn run(_opts: config::Options, _args: Vec<String>) -> ExitCode {
-    report_error("nubscroll runs only on Windows");
+    report_error("nubmiddle runs only on Windows");
     ExitCode::FAILURE
 }
 
@@ -220,7 +245,7 @@ mod console {
     /// Shows an error message box.
     pub fn message_box(msg: &str) {
         let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-        let (text, caption) = (wide(msg), wide("nubscroll"));
+        let (text, caption) = (wide(msg), wide("nubmiddle"));
         unsafe {
             MessageBoxW(
                 std::ptr::null_mut(),

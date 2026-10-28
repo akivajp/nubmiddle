@@ -79,7 +79,7 @@ fn fill(dst: &mut [u16], s: &str) {
 pub fn create(log: Logger, args: Vec<String>) -> Result<(), String> {
     unsafe {
         let instance = GetModuleHandleW(null());
-        let class = wide("nubscroll.tray");
+        let class = wide("nubmiddle.tray");
         let mut wc: WNDCLASSW = std::mem::zeroed();
         wc.lpfnWndProc = Some(wnd_proc);
         wc.hInstance = instance;
@@ -91,7 +91,7 @@ pub fn create(log: Logger, args: Vec<String>) -> Result<(), String> {
             ));
         }
         // A normal (never shown) top-level window: message-only windows miss the TaskbarCreated broadcast
-        let title = wide("nubscroll");
+        let title = wide("nubmiddle");
         let hwnd = CreateWindowExW(
             0,
             class.as_ptr(),
@@ -164,7 +164,7 @@ fn icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
 
 /// Tooltip text for the current state.
 fn tooltip(paused: bool) -> String {
-    let mut tip = String::from("nubscroll");
+    let mut tip = String::from("nubmiddle");
     if process::is_current_elevated() {
         tip += " (administrator)";
     }
@@ -280,7 +280,7 @@ fn show_menu(hwnd: HWND) {
     };
     unsafe {
         let menu = CreatePopupMenu();
-        let title = wide(&format!("nubscroll {}", env!("CARGO_PKG_VERSION")));
+        let title = wide(&format!("nubmiddle {}", env!("CARGO_PKG_VERSION")));
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, title.as_ptr());
         AppendMenuW(menu, MF_SEPARATOR, 0, null());
         let (label, flags) = match &autostart {
@@ -363,7 +363,7 @@ unsafe extern "system" fn wnd_proc(
             if let Status::Stale(task) = &status {
                 notify(
                     hwnd,
-                    "nubscroll: autostart needs an update",
+                    "nubmiddle: autostart needs an update",
                     &format!(
                         "Autostart still starts {}. Choose \"Start with Windows: update to this exe\" in the tray menu.",
                         task.command

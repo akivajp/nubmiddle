@@ -8,10 +8,10 @@ use crate::gesture::{GestureConfig, MoveMode};
 
 /// Usage text shown by `--help`.
 pub const USAGE: &str = "\
-nubscroll - middle click and scroll with the TrackPoint middle button
+nubmiddle - middle click and scroll with the middle button of a pointing stick (TrackPoint)
 
 Usage:
-    nubscroll [OPTIONS]
+    nubmiddle [OPTIONS]
 
 Options:
     --mode <scroll|drag>   What middle button + move does (default: scroll)
@@ -33,7 +33,7 @@ Options:
                            drivers (for troubleshooting)
     -h, --help             Show this help
 
-nubscroll stays in the notification area (system tray). Use its menu to pause,
+nubmiddle stays in the notification area (system tray). Use its menu to pause,
 quit, or start it automatically at logon with administrator rights.
 
 Internal options (used by the tray menu through a UAC prompt):

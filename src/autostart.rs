@@ -12,7 +12,11 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 /// Name of the scheduled task.
-pub const TASK_NAME: &str = "nubscroll";
+pub const TASK_NAME: &str = "nubmiddle";
+
+/// Task names used by earlier versions (the tool was called nubscroll before 0.2).
+/// Such a task is treated as stale and replaced on the next registration.
+pub const LEGACY_TASK_NAMES: &[&str] = &["nubscroll"];
 
 /// Command line and arguments of a registered task.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +102,7 @@ pub fn task_xml(user: &str, exe: &str, arguments: &str, dir: &str) -> String {
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Starts nubscroll at logon with administrator rights, so that it also works on elevated windows.</Description>
+    <Description>Starts nubmiddle at logon with administrator rights, so that it also works on elevated windows.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -209,7 +213,10 @@ mod windows {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-    use super::{Status, TASK_NAME, TaskInfo, decode_output, parse_task, same_path, task_xml};
+    use super::{
+        LEGACY_TASK_NAMES, Status, TASK_NAME, TaskInfo, decode_output, parse_task, same_path,
+        task_xml,
+    };
 
     /// Runs `schtasks.exe` without flashing a console window.
     fn schtasks(args: &[&str]) -> Result<Output, String> {
@@ -233,9 +240,9 @@ mod windows {
         }
     }
 
-    /// Returns the registered task, or None if there is none (or it cannot be read).
-    pub fn query() -> Option<TaskInfo> {
-        let out = check(schtasks(&["/Query", "/TN", TASK_NAME, "/XML"]).ok()?).ok()?;
+    /// Returns the task called `name`, or None if there is none (or it cannot be read).
+    fn query(name: &str) -> Option<TaskInfo> {
+        let out = check(schtasks(&["/Query", "/TN", name, "/XML"]).ok()?).ok()?;
         parse_task(&decode_output(&out.stdout))
     }
 
@@ -248,10 +255,21 @@ mod windows {
 
     /// Returns the autostart state for the running exe.
     pub fn status() -> Status {
-        match query() {
-            None => Status::NotRegistered,
+        match query(TASK_NAME) {
             Some(task) if same_path(&task.command, &current_exe()) => Status::Registered,
             Some(task) => Status::Stale(task),
+            // A task of an earlier version must be replaced (with its arguments kept)
+            None => match LEGACY_TASK_NAMES.iter().find_map(|name| query(name)) {
+                Some(task) => Status::Stale(task),
+                None => Status::NotRegistered,
+            },
+        }
+    }
+
+    /// Deletes the tasks of earlier versions, ignoring errors (they usually do not exist).
+    fn delete_legacy() {
+        for name in LEGACY_TASK_NAMES {
+            let _ = schtasks(&["/Delete", "/TN", name, "/F"]);
         }
     }
 
@@ -274,7 +292,7 @@ mod windows {
             .unwrap_or_default();
         let xml = task_xml(user, &exe.display().to_string(), arguments, &dir);
         // schtasks reads the definition from a file; UTF-16LE with BOM matches the declared encoding
-        let path = std::env::temp_dir().join(format!("nubscroll-task-{}.xml", std::process::id()));
+        let path = std::env::temp_dir().join(format!("nubmiddle-task-{}.xml", std::process::id()));
         let bytes: Vec<u8> = [0xFEFFu16]
             .into_iter()
             .chain(xml.encode_utf16())
@@ -292,11 +310,14 @@ mod windows {
         ])
         .and_then(check);
         let _ = std::fs::remove_file(&path);
-        result.map(|_| ())
+        result?;
+        delete_legacy();
+        Ok(())
     }
 
-    /// Deletes the task. Needs administrator rights.
+    /// Deletes the task (and any task of an earlier version). Needs administrator rights.
     pub fn unregister() -> Result<(), String> {
+        delete_legacy();
         check(schtasks(&["/Delete", "/TN", TASK_NAME, "/F"])?).map(|_| ())
     }
 
@@ -365,7 +386,7 @@ mod tests {
     fn task_xml_round_trips_command_and_arguments() {
         let xml = task_xml(
             r"PC\akiva",
-            r"C:\Tools & Apps\nubscroll.exe",
+            r"C:\Tools & Apps\nubmiddle.exe",
             r#"--log "C:\a b\x.log""#,
             r"C:\Tools & Apps",
         );
@@ -376,7 +397,7 @@ mod tests {
         assert_eq!(
             parse_task(&xml),
             Some(TaskInfo {
-                command: r"C:\Tools & Apps\nubscroll.exe".into(),
+                command: r"C:\Tools & Apps\nubmiddle.exe".into(),
                 arguments: r#"--log "C:\a b\x.log""#.into(),
             })
         );
@@ -409,9 +430,9 @@ mod tests {
     #[test]
     fn same_path_ignores_case_and_slashes() {
         assert!(same_path(
-            r"C:\Tools\nubscroll.exe",
-            "c:/tools/NUBSCROLL.EXE"
+            r"C:\Tools\nubmiddle.exe",
+            "c:/tools/NUBMIDDLE.EXE"
         ));
-        assert!(!same_path(r"C:\Tools\nubscroll.exe", r"D:\nubscroll.exe"));
+        assert!(!same_path(r"C:\Tools\nubmiddle.exe", r"D:\nubmiddle.exe"));
     }
 }

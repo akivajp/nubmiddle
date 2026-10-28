@@ -1,4 +1,4 @@
-# nubscroll — notes for coding agents
+# nubmiddle — notes for coding agents
 
 ## Language conventions (override the user's global defaults)
 
