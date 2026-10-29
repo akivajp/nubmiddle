@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/nubmiddle.png" width="128" alt="nubmiddle のアイコン: 4つのキーの間にある赤いトラックポイント"></p>
+
 # nubmiddle
 
 [English](README.md)

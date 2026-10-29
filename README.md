@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/nubmiddle.png" width="128" alt="nubmiddle icon: a red TrackPoint nub between four keycaps"></p>
+
 # nubmiddle
 
 [日本語](README.ja.md)

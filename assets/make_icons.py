@@ -4,7 +4,8 @@
 # ///
 """Generates the nubmiddle icons (a red TrackPoint nub between four keycaps).
 
-Writes multi-size .ico files for the normal and the paused state, plus a preview sheet.
+Writes multi-size .ico files for the normal and the paused state, a 256 px PNG for the README,
+and optionally a preview sheet.
 Small sizes (up to 24 px) use a simplified drawing so that the keys stay apart and the
 nub stays readable in the notification area.
 
@@ -172,7 +173,8 @@ def main() -> None:
         "--out-dir",
         type=Path,
         default=Path(__file__).resolve().parent,
-        help="folder for nubmiddle.ico and nubmiddle-paused.ico (default: this script's folder)",
+        help="folder for nubmiddle.ico, nubmiddle-paused.ico and nubmiddle.png "
+        "(default: this script's folder)",
     )
     parser.add_argument("--preview", type=Path, help="also write a preview sheet (PNG) here")
     args = parser.parse_args()
@@ -181,7 +183,8 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_ico(args.out_dir / "nubmiddle.ico", normal)
     write_ico(args.out_dir / "nubmiddle-paused.ico", paused)
-    print(f"wrote {args.out_dir / 'nubmiddle.ico'} and {args.out_dir / 'nubmiddle-paused.ico'}")
+    normal[256].save(args.out_dir / "nubmiddle.png")
+    print(f"wrote nubmiddle.ico, nubmiddle-paused.ico and nubmiddle.png in {args.out_dir}")
     if args.preview:
         preview(args.preview, [normal, paused])
         print(f"wrote {args.preview}")
