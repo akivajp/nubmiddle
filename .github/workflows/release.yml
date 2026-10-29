@@ -1,0 +1,68 @@
+# Builds the Windows exe for x64 and ARM64.
+# - On a version tag (v*), the zips are attached to a draft GitHub release, to be reviewed and published by hand.
+# - Run it by hand (workflow_dispatch) to only build and keep the zips as workflow artifacts.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            arch: x64
+          - target: aarch64-pc-windows-msvc
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Test
+        # The tests run on the host (x64) only
+        if: matrix.arch == 'x64'
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0, 7))" }
+          $dir = "nubmiddle-$version-${{ matrix.arch }}"
+          New-Item -ItemType Directory $dir | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/nubmiddle.exe, README.md, README.ja.md, LICENSE $dir
+          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+          "ZIP=$dir.zip" >> $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nubmiddle-${{ matrix.arch }}
+          path: ${{ env.ZIP }}
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" nubmiddle-*.zip \
+            --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
+            --title "nubmiddle $GITHUB_REF_NAME"
