@@ -1,0 +1,4 @@
+// Resources embedded into nubmiddle.exe (compiled by build.rs through embed-resource).
+// The icon with the lowest id is the one Explorer shows for the exe.
+1 ICON "nubmiddle.ico"
+2 ICON "nubmiddle-paused.ico"
