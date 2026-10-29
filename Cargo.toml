@@ -1,6 +1,6 @@
 [package]
 name = "nubmiddle"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Windows tray tool that gives the TrackPoint-style pointing stick middle button both middle click and scrolling"
 license = "MIT"
