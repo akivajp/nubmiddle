@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use crate::gesture::{DEFAULT_SENSITIVITY, GestureConfig, MoveMode};
+use crate::i18n::LangSetting;
 
 /// Usage text shown by `--help`.
 pub const USAGE: &str = "\
@@ -61,6 +62,11 @@ pub struct Settings {
     pub cursor: bool,
     /// Milliseconds the middle button must be held before the four-way arrow cursor shows
     pub hold_delay_ms: u64,
+    /// Language of the tray menu and notifications
+    pub language: LangSetting,
+    /// Devices whose middle button scrolls, as "VVVV:PPPP" ids (or interface names for devices
+    /// without ids). Empty means every device. Other devices keep a plain middle button.
+    pub devices: Vec<String>,
 }
 
 impl Default for Settings {
@@ -69,12 +75,14 @@ impl Default for Settings {
             gesture: GestureConfig::default(),
             cursor: true,
             hold_delay_ms: 200,
+            language: LangSetting::Auto,
+            devices: Vec::new(),
         }
     }
 }
 
 /// Keys of the settings file, in the order they are written.
-pub const KEYS: [&str; 12] = [
+pub const KEYS: [&str; 14] = [
     "mode",
     "threshold",
     "sensitivity_v",
@@ -86,6 +94,8 @@ pub const KEYS: [&str; 12] = [
     "quantize",
     "cursor",
     "hold_delay_ms",
+    "language",
+    "devices",
     // Read-only alias that sets both sensitivities (never written)
     "sensitivity",
 ];
@@ -121,6 +131,11 @@ impl Settings {
             "quantize" => g.quantize = parse_bool(key, value)?,
             "cursor" => self.cursor = parse_bool(key, value)?,
             "hold_delay_ms" => self.hold_delay_ms = parse_num(key, value)?,
+            "language" => {
+                self.language = LangSetting::parse(value)
+                    .ok_or_else(|| format!("invalid language: {value} (expected auto, en or ja)"))?
+            }
+            "devices" => self.devices = parse_devices(value),
             _ => return Err(format!("unknown setting: {key}")),
         }
         Ok(())
@@ -144,6 +159,9 @@ impl Settings {
             "quantize" => g.quantize.to_string(),
             "cursor" => self.cursor.to_string(),
             "hold_delay_ms" => self.hold_delay_ms.to_string(),
+            "language" => self.language.as_str().into(),
+            "devices" if self.devices.is_empty() => "all".into(),
+            "devices" => self.devices.join(", "),
             _ => return None,
         })
     }
@@ -185,6 +203,15 @@ impl Settings {
         text
     }
 
+    /// Whether the middle button of the device `id` scrolls. Unknown devices (None) do,
+    /// so that a device whose raw input is missing never loses scrolling.
+    pub fn scrolls(devices: &[String], id: Option<&str>) -> bool {
+        match id {
+            Some(id) if !devices.is_empty() => devices.iter().any(|d| d.eq_ignore_ascii_case(id)),
+            _ => true,
+        }
+    }
+
     /// One-line summary for the log.
     pub fn summary(&self) -> String {
         KEYS.iter()
@@ -203,24 +230,19 @@ impl Settings {
     }
 }
 
-/// Scroll speed levels offered in the tray menu: (label, factor of the default sensitivity).
-pub const SPEED_LEVELS: [(&str, f64); 5] = [
-    ("Slower (x0.5)", 0.5),
-    ("Slow (x0.7)", 0.7),
-    ("Normal", 1.0),
-    ("Fast (x1.4)", 1.4),
-    ("Faster (x2)", 2.0),
-];
+/// Scroll speed levels offered in the tray menu, as factors of the default sensitivity
+/// (their names are `i18n::Text::Speed`).
+pub const SPEED_FACTORS: [f64; 5] = [0.5, 0.7, 1.0, 1.4, 2.0];
 
-/// Sensitivity for a speed level index of [`SPEED_LEVELS`].
+/// Sensitivity for a speed level index of [`SPEED_FACTORS`].
 pub fn speed_sensitivity(level: usize) -> f64 {
     // Rounded so that the settings file shows 7 rather than 7.000000000000001
-    (DEFAULT_SENSITIVITY * SPEED_LEVELS[level].1 * 100.0).round() / 100.0
+    (DEFAULT_SENSITIVITY * SPEED_FACTORS[level] * 100.0).round() / 100.0
 }
 
 /// Index of the speed level matching `sensitivity`, or None for a custom value.
 pub fn speed_level(sensitivity: f64) -> Option<usize> {
-    (0..SPEED_LEVELS.len()).find(|&i| (speed_sensitivity(i) - sensitivity).abs() < 1e-6)
+    (0..SPEED_FACTORS.len()).find(|&i| (speed_sensitivity(i) - sensitivity).abs() < 1e-6)
 }
 
 /// Runtime options from the command line.
@@ -329,6 +351,20 @@ fn parse_num<T: std::str::FromStr>(name: &str, value: &str) -> Result<T, String>
     value
         .parse()
         .map_err(|_| format!("invalid number for {name}: {value}"))
+}
+
+/// Parses the device list: `all` (or nothing) for every device, else ids separated by commas.
+fn parse_devices(value: &str) -> Vec<String> {
+    if value.trim().eq_ignore_ascii_case("all") {
+        return Vec::new();
+    }
+    let mut devices: Vec<String> = Vec::new();
+    for id in value.split(',').map(str::trim).filter(|id| !id.is_empty()) {
+        if !devices.iter().any(|d| d.eq_ignore_ascii_case(id)) {
+            devices.push(id.to_string());
+        }
+    }
+    devices
 }
 
 /// Parses a positive, finite sensitivity.
@@ -481,6 +517,7 @@ mod tests {
         assert!(parse(&["--sensitivity-v", "-2"]).is_err());
         assert!(parse(&["--hold-delay", "-1"]).is_err());
         assert!(parse(&["--unknown"]).is_err());
+        assert!(Settings::default().set("language", "fr").is_err());
     }
 
     #[test]
@@ -490,6 +527,8 @@ mod tests {
         s.gesture.sensitivity_v = 14.0;
         s.gesture.horizontal = false;
         s.hold_delay_ms = 300;
+        s.language = LangSetting::Fixed(crate::i18n::Lang::Ja);
+        s.devices = vec!["17EF:6009".into(), "04FE:0021".into()];
         let mut loaded = Settings::default();
         assert_eq!(loaded.apply_ini(&s.to_ini()), Vec::<String>::new());
         assert_eq!(loaded, s);
@@ -518,6 +557,23 @@ mod tests {
         let s = file.with_overrides(&run_opts(&["--mode", "scroll"]).overrides);
         assert_eq!(s.gesture.mode, MoveMode::Scroll);
         assert_eq!(s.gesture.sensitivity_v, 20.0);
+    }
+
+    #[test]
+    fn device_list() {
+        let mut s = Settings::default();
+        assert_eq!(s.get("devices").unwrap(), "all");
+        s.set("devices", " 17EF:6009 ,04fe:0021,, 17ef:6009")
+            .unwrap();
+        assert_eq!(s.devices, vec!["17EF:6009", "04fe:0021"]);
+        assert_eq!(s.get("devices").unwrap(), "17EF:6009, 04fe:0021");
+        assert!(Settings::scrolls(&s.devices, Some("04FE:0021")));
+        assert!(!Settings::scrolls(&s.devices, Some("046D:C52B")));
+        // Unknown devices and an empty list (= all devices) scroll
+        assert!(Settings::scrolls(&s.devices, None));
+        assert!(Settings::scrolls(&[], Some("046D:C52B")));
+        s.set("devices", "ALL").unwrap();
+        assert!(s.devices.is_empty());
     }
 
     #[test]

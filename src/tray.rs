@@ -11,11 +11,13 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::thread;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Shell::{
     NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_WARNING, NIM_ADD, NIM_DELETE,
     NIM_MODIFY, NOTIFY_ICON_INFOTIP_FLAGS, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::WM_INPUT;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, GetCursorPos,
     HMENU, IDI_APPLICATION, LoadIconW, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
@@ -29,12 +31,14 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use windows_sys::core::PCWSTR;
 
 use crate::autostart::{self, Status};
-use crate::config::{self, SPEED_LEVELS, Settings};
+use crate::config::{self, SPEED_FACTORS, Settings};
 use crate::cursor;
 use crate::gesture::MoveMode;
 use crate::hook;
+use crate::i18n::{Lang, LangSetting, Text, tr, trf};
 use crate::logger::Logger;
 use crate::process;
+use crate::rawinput;
 use crate::settings;
 
 /// Callback message of the tray icon.
@@ -55,6 +59,13 @@ const ID_SPEED_H: usize = 30;
 const ID_RESET: usize = 40;
 const ID_OPEN_SETTINGS: usize = 41;
 const ID_RELOAD_SETTINGS: usize = 42;
+const ID_LANG_AUTO: usize = 50;
+const ID_LANG_EN: usize = 51;
+const ID_LANG_JA: usize = 52;
+const ID_DEV_ALL: usize = 60;
+/// First of the device items (one id per entry of `Tray::menu_devices`)
+const ID_DEV_FIRST: usize = 61;
+const MAX_DEVICES: usize = 30;
 
 /// Id of our icon within the window.
 const ICON_ID: u32 = 1;
@@ -75,12 +86,16 @@ struct Tray {
     saved: Settings,
     /// Command-line settings, applied over the file until the same setting is changed in the menu
     overrides: Vec<(String, String)>,
+    /// Device ids in the order of the device items of the last menu shown
+    menu_devices: Vec<String>,
     /// "TaskbarCreated": Explorer restarted and the icon must be added again
     msg_taskbar_created: u32,
 }
 
 thread_local! {
     static TRAY: RefCell<Option<Tray>> = const { RefCell::new(None) };
+    /// Whether raw input events are logged (--trace)
+    static TRACE_RAW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Converts a string to a NUL-terminated UTF-16 buffer.
@@ -108,7 +123,12 @@ pub struct SettingsState {
 
 /// Creates the hidden window and the tray icon, then checks the autostart task in the background.
 /// Must be called on the thread that will run the hook's message loop.
-pub fn create(log: Logger, args: Vec<String>, settings: SettingsState) -> Result<(), String> {
+pub fn create(
+    log: Logger,
+    args: Vec<String>,
+    settings: SettingsState,
+    trace: bool,
+) -> Result<(), String> {
     unsafe {
         let instance = GetModuleHandleW(null());
         let class = wide("nubmiddle.tray");
@@ -155,6 +175,7 @@ pub fn create(log: Logger, args: Vec<String>, settings: SettingsState) -> Result
                 settings_path: settings.path,
                 saved: settings.saved,
                 overrides: settings.overrides,
+                menu_devices: Vec::new(),
                 msg_taskbar_created,
             })
         });
@@ -163,6 +184,16 @@ pub fn create(log: Logger, args: Vec<String>, settings: SettingsState) -> Result
                 "Shell_NotifyIconW failed: {}",
                 std::io::Error::last_os_error()
             ));
+        }
+        // Raw input tells which device a middle press comes from (for "Devices that scroll")
+        match rawinput::register(hwnd) {
+            Ok(()) => {
+                for device in rawinput::list_mice() {
+                    log.log(format!("mouse device: {}", rawinput::describe(device)));
+                }
+                TRACE_RAW.with(|t| t.set(trace));
+            }
+            Err(e) => log.log(format!("[warn] {e} (all devices will scroll)")),
         }
         check_autostart(hwnd, log);
     }
@@ -197,14 +228,21 @@ fn icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
     nid
 }
 
+/// Language of the menu and notifications, from the setting and the Windows display language.
+fn current_lang() -> Lang {
+    let setting = TRAY.with(|t| t.borrow().as_ref().map(|t| t.saved.language));
+    let ui = unsafe { GetUserDefaultUILanguage() };
+    setting.unwrap_or_default().resolve((ui != 0).then_some(ui))
+}
+
 /// Tooltip text for the current state.
-fn tooltip(paused: bool) -> String {
+fn tooltip(lang: Lang, paused: bool) -> String {
     let mut tip = String::from("nubmiddle");
     if process::is_current_elevated() {
-        tip += " (administrator)";
+        tip += tr(lang, Text::TipAdministrator);
     }
     if paused {
-        tip += " - paused";
+        tip += tr(lang, Text::TipPaused);
     }
     tip
 }
@@ -237,11 +275,12 @@ fn load_icon(id: u16) -> HICON {
 /// Adds the icon (or updates its tooltip and image with `modify`).
 fn add_icon(hwnd: HWND, modify: bool) -> bool {
     let paused = TRAY.with(|t| t.borrow().as_ref().is_some_and(|t| t.paused));
+    let lang = current_lang();
     let mut nid = icon_data(hwnd);
     nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     nid.uCallbackMessage = WM_TRAY;
     nid.hIcon = load_icon(if paused { ICON_PAUSED } else { ICON_NORMAL });
-    fill(&mut nid.szTip, &tooltip(paused));
+    fill(&mut nid.szTip, &tooltip(lang, paused));
     let op = if modify { NIM_MODIFY } else { NIM_ADD };
     unsafe { Shell_NotifyIconW(op, &nid) != 0 }
 }
@@ -333,6 +372,7 @@ fn toggle_autostart(hwnd: HWND, log: Logger, register: bool, args: Vec<String>) 
 fn apply_settings(t: &Tray) {
     let effective = t.saved.with_overrides(&t.overrides);
     hook::set_config(effective.gesture.clone());
+    hook::set_devices(effective.devices.clone());
     t.log.log(format!("settings: {}", effective.summary()));
 }
 
@@ -369,8 +409,42 @@ fn change_setting(key: &str, value: &str) {
 
 /// Handles the settings items of the menu.
 fn settings_command(hwnd: HWND, cmd: usize) {
-    let levels = SPEED_LEVELS.len();
+    let levels = SPEED_FACTORS.len();
     match cmd {
+        ID_DEV_ALL => change_setting("devices", "all"),
+        c if (ID_DEV_FIRST..ID_DEV_FIRST + MAX_DEVICES).contains(&c) => {
+            // Toggle the device in the list; an empty list means all devices
+            let value = TRAY.with(|t| {
+                let t = t.borrow();
+                let t = t.as_ref()?;
+                let id = t.menu_devices.get(c - ID_DEV_FIRST)?;
+                let mut devices = t.saved.with_overrides(&t.overrides).devices;
+                match devices.iter().position(|d| d.eq_ignore_ascii_case(id)) {
+                    Some(i) => {
+                        devices.remove(i);
+                    }
+                    None => devices.push(id.clone()),
+                }
+                Some(if devices.is_empty() {
+                    "all".to_string()
+                } else {
+                    devices.join(", ")
+                })
+            });
+            if let Some(value) = value {
+                change_setting("devices", &value);
+            }
+        }
+        ID_LANG_AUTO | ID_LANG_EN | ID_LANG_JA => {
+            let value = match cmd {
+                ID_LANG_EN => "en",
+                ID_LANG_JA => "ja",
+                _ => "auto",
+            };
+            change_setting("language", value);
+            // The tooltip is translated too
+            add_icon(hwnd, true);
+        }
         ID_MODE_SCROLL => change_setting("mode", "scroll"),
         ID_MODE_DRAG => change_setting("mode", "drag"),
         c if (ID_SPEED_V..ID_SPEED_V + levels).contains(&c) => change_setting(
@@ -427,16 +501,23 @@ fn settings_command(hwnd: HWND, cmd: usize) {
                 apply_settings(t);
                 Some(warnings)
             });
+            let lang = current_lang();
             match warnings {
                 Some(w) if !w.is_empty() => notify(
                     hwnd,
                     NIIF_WARNING,
-                    "nubmiddle: settings file has errors",
-                    &format!("{} line(s) were skipped: {}", w.len(), w.join("; ")),
+                    tr(lang, Text::SettingsErrorsTitle),
+                    &(trf(lang, Text::SettingsErrorsBody, &w.len().to_string()) + &w.join("; ")),
                 ),
-                Some(_) => notify(hwnd, NIIF_INFO, "nubmiddle", "Settings file reloaded."),
+                Some(_) => notify(
+                    hwnd,
+                    NIIF_INFO,
+                    "nubmiddle",
+                    tr(lang, Text::SettingsReloaded),
+                ),
                 None => {}
             }
+            add_icon(hwnd, true);
         }
         _ => {}
     }
@@ -456,16 +537,29 @@ unsafe fn append(menu: HMENU, id: usize, label: &str, checked: bool, grayed: boo
 }
 
 /// Appends a submenu choosing one of the speed levels for `sensitivity`.
-unsafe fn append_speed_menu(menu: HMENU, label: &str, first_id: usize, sensitivity: f64) {
+unsafe fn append_speed_menu(
+    menu: HMENU,
+    lang: Lang,
+    label: &str,
+    first_id: usize,
+    sensitivity: f64,
+) {
     unsafe {
         let sub = CreatePopupMenu();
         let current = config::speed_level(sensitivity);
-        for (i, (name, _)) in SPEED_LEVELS.iter().enumerate() {
-            append(sub, first_id + i, name, current == Some(i), false);
+        for i in 0..SPEED_FACTORS.len() {
+            append(
+                sub,
+                first_id + i,
+                tr(lang, Text::Speed(i)),
+                current == Some(i),
+                false,
+            );
         }
         // A value from the settings file or the command line that is not one of the levels
         if current.is_none() {
-            append(sub, 0, &format!("Custom ({sensitivity})"), true, true);
+            let custom = trf(lang, Text::CustomSpeed, &sensitivity.to_string());
+            append(sub, 0, &custom, true, true);
         }
         let label = wide(label);
         AppendMenuW(menu, MF_POPUP, sub as usize, label.as_ptr());
@@ -487,6 +581,8 @@ fn show_menu(hwnd: HWND) {
     }) else {
         return;
     };
+    let lang = current_lang();
+    let t = |text| tr(lang, text);
     unsafe {
         let menu = CreatePopupMenu();
         let title = wide(&format!("nubmiddle {}", env!("CARGO_PKG_VERSION")));
@@ -499,46 +595,120 @@ fn show_menu(hwnd: HWND) {
         append(
             mode,
             ID_MODE_SCROLL,
-            "Scroll",
+            t(Text::ModeScroll),
             g.mode == MoveMode::Scroll,
             false,
         );
         append(
             mode,
             ID_MODE_DRAG,
-            "Middle-button drag (no scrolling)",
+            t(Text::ModeDrag),
             g.mode == MoveMode::Drag,
             false,
         );
-        let mode_label = wide("Middle button + move");
+        let mode_label = wide(t(Text::MoveMenu));
         AppendMenuW(menu, MF_POPUP, mode as usize, mode_label.as_ptr());
-        append_speed_menu(menu, "Vertical scroll speed", ID_SPEED_V, g.sensitivity_v);
-        append_speed_menu(menu, "Horizontal scroll speed", ID_SPEED_H, g.sensitivity_h);
-        append(menu, ID_RESET, "Reset to defaults", false, false);
-        append(menu, ID_OPEN_SETTINGS, "Open settings file", false, false);
+        append_speed_menu(
+            menu,
+            lang,
+            t(Text::VerticalSpeed),
+            ID_SPEED_V,
+            g.sensitivity_v,
+        );
+        append_speed_menu(
+            menu,
+            lang,
+            t(Text::HorizontalSpeed),
+            ID_SPEED_H,
+            g.sensitivity_h,
+        );
+        // Devices that scroll: connected devices, plus listed ones that are not connected
+        let devices = CreatePopupMenu();
+        append(
+            devices,
+            ID_DEV_ALL,
+            t(Text::DevicesAll),
+            effective.devices.is_empty(),
+            false,
+        );
+        AppendMenuW(devices, MF_SEPARATOR, 0, null());
+        let mut items: Vec<(String, String)> = rawinput::connected()
+            .into_iter()
+            .map(|(id, product)| {
+                let label = match product {
+                    Some(product) => format!("{product} ({id})"),
+                    None => id.clone(),
+                };
+                (id, label)
+            })
+            .collect();
+        for id in &effective.devices {
+            if !items
+                .iter()
+                .any(|(known, _)| known.eq_ignore_ascii_case(id))
+            {
+                items.push((id.clone(), format!("{id}{}", t(Text::NotConnected))));
+            }
+        }
+        items.truncate(MAX_DEVICES);
+        for (i, (id, label)) in items.iter().enumerate() {
+            let listed = effective.devices.iter().any(|d| d.eq_ignore_ascii_case(id));
+            append(devices, ID_DEV_FIRST + i, label, listed, false);
+        }
+        TRAY.with(|tr| {
+            if let Some(tr) = tr.borrow_mut().as_mut() {
+                tr.menu_devices = items.into_iter().map(|(id, _)| id).collect();
+            }
+        });
+        let devices_label = wide(t(Text::DevicesMenu));
+        AppendMenuW(menu, MF_POPUP, devices as usize, devices_label.as_ptr());
+        append(menu, ID_RESET, t(Text::ResetDefaults), false, false);
+        append(menu, ID_OPEN_SETTINGS, t(Text::OpenSettings), false, false);
         append(
             menu,
             ID_RELOAD_SETTINGS,
-            "Reload settings file",
+            t(Text::ReloadSettings),
             false,
             false,
         );
+        // Language
+        let language = CreatePopupMenu();
+        let setting = effective.language;
+        append(
+            language,
+            ID_LANG_AUTO,
+            t(Text::LanguageAuto),
+            setting == LangSetting::Auto,
+            false,
+        );
+        append(
+            language,
+            ID_LANG_EN,
+            "English",
+            setting == LangSetting::Fixed(Lang::En),
+            false,
+        );
+        append(
+            language,
+            ID_LANG_JA,
+            "日本語",
+            setting == LangSetting::Fixed(Lang::Ja),
+            false,
+        );
+        let language_label = wide(t(Text::LanguageMenu));
+        AppendMenuW(menu, MF_POPUP, language as usize, language_label.as_ptr());
         AppendMenuW(menu, MF_SEPARATOR, 0, null());
 
-        let (label, flags) = match &autostart {
-            None => ("Start with Windows (checking...)", MF_GRAYED),
-            Some(Status::NotRegistered) => ("Start with Windows (as administrator)", 0),
-            Some(Status::Registered) => ("Start with Windows (as administrator)", MF_CHECKED),
-            Some(Status::Stale(_)) => ("Start with Windows: update to this exe", 0),
+        let (label, checked, grayed) = match &autostart {
+            None => (Text::AutostartChecking, false, true),
+            Some(Status::NotRegistered) => (Text::Autostart, false, false),
+            Some(Status::Registered) => (Text::Autostart, true, false),
+            Some(Status::Stale(_)) => (Text::AutostartUpdate, false, false),
         };
-        let label = wide(label);
-        AppendMenuW(menu, MF_STRING | flags, ID_AUTOSTART, label.as_ptr());
-        let pause = wide("Pause");
-        let pause_flags = if paused { MF_CHECKED } else { 0 };
-        AppendMenuW(menu, MF_STRING | pause_flags, ID_PAUSE, pause.as_ptr());
+        append(menu, ID_AUTOSTART, t(label), checked, grayed);
+        append(menu, ID_PAUSE, t(Text::Pause), paused, false);
         AppendMenuW(menu, MF_SEPARATOR, 0, null());
-        let quit = wide("Quit");
-        AppendMenuW(menu, MF_STRING, ID_QUIT, quit.as_ptr());
+        append(menu, ID_QUIT, t(Text::Quit), false, false);
 
         let mut pt = POINT { x: 0, y: 0 };
         GetCursorPos(&mut pt);
@@ -604,14 +774,12 @@ unsafe extern "system" fn wnd_proc(
         WM_AUTOSTART_STATUS => {
             let status = *unsafe { Box::from_raw(lparam as *mut Status) };
             if let Status::Stale(task) = &status {
+                let lang = current_lang();
                 notify(
                     hwnd,
                     NIIF_WARNING,
-                    "nubmiddle: autostart needs an update",
-                    &format!(
-                        "Autostart still starts {}. Choose \"Start with Windows: update to this exe\" in the tray menu.",
-                        task.command
-                    ),
+                    tr(lang, Text::AutostartStaleTitle),
+                    &trf(lang, Text::AutostartStaleBody, &task.command),
                 );
             }
             TRAY.with(|t| {
@@ -620,6 +788,33 @@ unsafe extern "system" fn wnd_proc(
                 }
             });
             0
+        }
+        WM_INPUT => {
+            if let Some(ev) = rawinput::read(lparam) {
+                // Tell the hook which device a middle press comes from (injected input has none)
+                if ev.middle_down()
+                    && let Some(id) = rawinput::device_id(ev.device)
+                {
+                    hook::on_raw_middle_down(id);
+                }
+                // Trace: button transitions always; moves only while the middle button is held
+                if TRACE_RAW.with(|t| t.get()) && (ev.buttons != 0 || hook::is_active()) {
+                    let log = TRAY.with(|t| t.borrow().as_ref().map(|t| t.log.clone()));
+                    if let Some(log) = log {
+                        log.log(format!(
+                            "[raw] buttons={:#06x}{}{} d=({},{}) device={}",
+                            ev.buttons,
+                            if ev.middle_down() { " MIDDLE_DOWN" } else { "" },
+                            if ev.middle_up() { " MIDDLE_UP" } else { "" },
+                            ev.dx,
+                            ev.dy,
+                            rawinput::describe(ev.device)
+                        ));
+                    }
+                }
+            }
+            // DefWindowProc releases the raw input buffer
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_CLOSE => {
             // Ctrl+C in the console, or another polite close request

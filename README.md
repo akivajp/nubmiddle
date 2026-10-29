@@ -45,7 +45,12 @@ nubmiddle stays in the notification area (system tray) without a console window.
 - **Middle button + move**: *Scroll* (default) or *Middle-button drag* (no scrolling; for panning in
   CAD, Blender, ...). A middle click works the same in both.
 - **Vertical / Horizontal scroll speed**: five levels each, from x0.5 to x2 of the default.
+- **Devices that scroll**: all mice and pointing devices (default), or only the devices checked in the
+  list of connected devices. Other devices keep a plain middle button, so e.g. a mouse can still
+  middle-drag in Blender while the TrackPoint scrolls. Devices are told apart with Raw Input and saved
+  by their vendor and product id (e.g. `17EF:6009`).
 - **Reset to defaults**, **Open settings file**, **Reload settings file**
+- **Language**: English or Japanese; by default it follows the Windows display language
 
 - **Start with Windows (as administrator)**: registers a Task Scheduler task that starts nubmiddle at
   logon with administrator rights (one UAC prompt when toggling, none at logon). The task reuses the
@@ -66,7 +71,8 @@ Changes made in the menu take effect at once and are saved to `nubmiddle.ini`:
 
 Each line is `key = value` with the keys `mode`, `threshold`, `sensitivity_v`, `sensitivity_h`,
 `horizontal`, `axis_lock`, `invert_v`, `invert_h`, `quantize`, `cursor` and `hold_delay_ms`
-(see the options below for their meaning). Command-line options take precedence over the file, until the
+(see the options below for their meaning), `language` (`auto`, `en` or `ja`) and `devices`
+(`all`, or ids separated by commas such as `17EF:6009, 04FE:0021`). Command-line options take precedence over the file, until the
 same setting is changed in the menu. Note that the autostart task starts nubmiddle with the options of
 the instance that registered it.
 
@@ -142,7 +148,7 @@ uv run assets/make_icons.py --preview preview.png
 - [x] Self-repair: re-register the task when the exe has been moved or replaced
 - [x] Settings file (ini next to the exe, for portable use)
 - [ ] Per-process exclusion list (Blender, CAD, ...)
-- [ ] Apply only to the TrackPoint, not to external mice (Raw Input)
+- [x] Apply only to chosen devices (e.g. the TrackPoint, not external mice), using Raw Input
 - [ ] Release builds for x64 / ARM64 via GitHub Actions
 - [ ] Installer (in addition to the single portable exe)
 

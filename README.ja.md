@@ -45,8 +45,13 @@ nubmiddle はコンソールウィンドウを開かず、通知領域 (タス�
   *Middle-button drag* (スクロールせず、通常の中ボタンドラッグ。CAD や Blender の画面移動向け) から選びます。
   中クリックはどちらでも同じです。
 - **Vertical / Horizontal scroll speed**: 縦・横それぞれ、既定値の x0.5 から x2 までの5段階です。
+- **スクロールするデバイス**: すべてのマウス・ポインティングデバイス (既定) か、接続中のデバイスの一覧で
+  チェックしたものだけかを選びます。それ以外のデバイスでは中ボタンが普通の中ボタンのままなので、
+  トラックポイントではスクロールしつつ、マウスでは Blender などで中ボタンドラッグを使えます。
+  デバイスは Raw Input で見分け、ベンダー ID と製品 ID (例: `17EF:6009`) で保存します。
 - **Reset to defaults** (既定値に戻す)、**Open settings file** (設定ファイルを開く)、
   **Reload settings file** (設定ファイルを読み込み直す)
+- **Language / 言語**: 英語か日本語。既定では Windows の表示言語に合わせます。
 
 - **Start with Windows (as administrator)**: ログオン時に nubmiddle を管理者権限で起動するタスクを、
   タスクスケジューラに登録します (切り替え時に UAC の確認が1回出ます。ログオン時には出ません)。
@@ -66,7 +71,9 @@ nubmiddle はコンソールウィンドウを開かず、通知領域 (タス�
 - `--config <FILE>` で指定した場合は、そのファイル
 
 各行は `key = value` の形式で、キーは `mode`、`threshold`、`sensitivity_v`、`sensitivity_h`、`horizontal`、
-`axis_lock`、`invert_v`、`invert_h`、`quantize`、`cursor`、`hold_delay_ms` です (意味は下のオプションを参照)。
+`axis_lock`、`invert_v`、`invert_h`、`quantize`、`cursor`、`hold_delay_ms` (意味は下のオプションを参照) と、
+`language` (`auto`、`en`、`ja` のいずれか)、`devices` (`all` か、`17EF:6009, 04FE:0021` のように
+カンマで区切った ID) です。
 コマンドラインのオプションは、メニューで同じ設定を変えるまでは、ファイルより優先されます。
 なお自動起動のタスクは、登録した時点の nubmiddle と同じオプションで起動します。
 
@@ -141,7 +148,7 @@ uv run assets/make_icons.py --preview preview.png
 - [x] 自己修復: exe が移動・差し替えされていたらタスクを登録し直す
 - [x] 設定ファイル (ポータブル運用向けに exe と同じフォルダの ini)
 - [ ] プロセス単位の除外リスト (Blender、CAD 等)
-- [ ] 外付けマウスには適用せず、トラックポイントだけに適用する (Raw Input)
+- [x] 選んだデバイスだけに適用する (外付けマウスには適用せずトラックポイントだけ等。Raw Input を利用)
 - [ ] GitHub Actions による x64 / ARM64 のリリースビルド
 - [ ] インストーラー (単体の exe に加えて)
 

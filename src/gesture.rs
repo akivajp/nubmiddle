@@ -267,6 +267,18 @@ impl Gesture {
         }
     }
 
+    /// Gives up the held middle button: when it turns out to come from a device that should not
+    /// scroll, a pending press becomes a plain middle-button drag. Returns the events to send
+    /// (the held down); does nothing in other states.
+    pub fn bypass(&mut self) -> Vec<Output> {
+        if let State::Pending { .. } = self.state {
+            self.state = State::Dragging;
+            vec![Output::MiddleDown]
+        } else {
+            vec![]
+        }
+    }
+
     /// Replaces the settings (e.g. changed from the tray menu). A gesture in progress continues.
     pub fn set_config(&mut self, config: GestureConfig) {
         self.config = config;
@@ -584,6 +596,27 @@ mod tests {
             Decision::suppress(vec![Output::MiddleUp])
         );
         assert!(!g.is_active());
+    }
+
+    #[test]
+    fn bypass_turns_pending_into_drag() {
+        let mut g = gesture(MoveMode::Scroll);
+        // Nothing to give up while idle
+        assert_eq!(g.bypass(), vec![]);
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        assert_eq!(g.bypass(), vec![Output::MiddleDown]);
+        assert_eq!(g.state_name(), "dragging");
+        // Moves pass and the up is sent after the replayed down
+        assert_eq!(g.handle(Input::Move { x: 9, y: 0 }), Decision::pass());
+        assert_eq!(
+            g.handle(Input::MiddleUp),
+            Decision::suppress(vec![Output::MiddleUp])
+        );
+        // Too late once scrolling has started
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        g.handle(Input::Move { x: 0, y: 9 });
+        assert_eq!(g.bypass(), vec![]);
+        assert_eq!(g.state_name(), "scrolling");
     }
 
     #[test]

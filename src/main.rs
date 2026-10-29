@@ -13,12 +13,14 @@ mod cursor;
 mod gesture;
 #[cfg(windows)]
 mod hook;
+mod i18n;
 #[cfg(windows)]
 mod logger;
 #[cfg(windows)]
 mod output;
 #[cfg(windows)]
 mod process;
+mod rawinput;
 mod settings;
 #[cfg(windows)]
 mod tray;
@@ -159,7 +161,7 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         saved,
         overrides: opts.overrides,
     };
-    if let Err(e) = tray::create(log.clone(), args, tray_settings) {
+    if let Err(e) = tray::create(log.clone(), args, tray_settings, opts.trace) {
         report_error(&e);
         return ExitCode::FAILURE;
     }
@@ -169,6 +171,7 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         gesture::Gesture::new(effective.gesture),
         out,
         cursor,
+        effective.devices,
         log,
         opts.trace,
     );
