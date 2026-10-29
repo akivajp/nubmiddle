@@ -18,6 +18,9 @@ pub enum MoveMode {
     Drag,
 }
 
+/// Default wheel amount per pixel of movement.
+pub const DEFAULT_SENSITIVITY: f64 = 10.0;
+
 /// Gesture recognition settings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GestureConfig {
@@ -25,8 +28,10 @@ pub struct GestureConfig {
     pub mode: MoveMode,
     /// Accumulated distance (px) beyond which it is no longer a middle click
     pub threshold: i32,
-    /// Wheel amount per pixel of movement (120 = one notch)
-    pub sensitivity: f64,
+    /// Vertical wheel amount per pixel of movement (120 = one notch)
+    pub sensitivity_v: f64,
+    /// Horizontal wheel amount per pixel of movement
+    pub sensitivity_h: f64,
     /// Enable horizontal scrolling
     pub horizontal: bool,
     /// Scroll only along the dominant axis of the movement that started scrolling.
@@ -47,7 +52,8 @@ impl Default for GestureConfig {
         Self {
             mode: MoveMode::Scroll,
             threshold: 4,
-            sensitivity: 10.0,
+            sensitivity_v: DEFAULT_SENSITIVITY,
+            sensitivity_h: DEFAULT_SENSITIVITY,
             horizontal: true,
             axis_lock: true,
             invert_vertical: false,
@@ -261,6 +267,11 @@ impl Gesture {
         }
     }
 
+    /// Replaces the settings (e.g. changed from the tray menu). A gesture in progress continues.
+    pub fn set_config(&mut self, config: GestureConfig) {
+        self.config = config;
+    }
+
     /// Resets the state (e.g. when paused).
     pub fn reset(&mut self) {
         self.state = State::Idle;
@@ -301,12 +312,12 @@ impl Gesture {
         let rem_y = if axes == Axes::Horizontal {
             0.0
         } else {
-            rem_y + sign_v * f64::from(dy) * cfg.sensitivity
+            rem_y + sign_v * f64::from(dy) * cfg.sensitivity_v
         };
         let rem_x = if axes == Axes::Vertical {
             0.0
         } else {
-            rem_x + sign_h * f64::from(dx) * cfg.sensitivity
+            rem_x + sign_h * f64::from(dx) * cfg.sensitivity_h
         };
 
         let (out_y, rem_y) = split_wheel(rem_y, cfg.quantize);
@@ -517,7 +528,7 @@ mod tests {
     #[test]
     fn fractional_sensitivity_carries_remainder() {
         let mut g = Gesture::new(GestureConfig {
-            sensitivity: 0.5,
+            sensitivity_v: 0.5,
             threshold: 1,
             ..GestureConfig::default()
         });
@@ -528,6 +539,31 @@ mod tests {
         assert_eq!(
             g.handle(Input::Move { x: 0, y: -1 }).emit,
             vec![Output::Wheel(1)]
+        );
+    }
+
+    #[test]
+    fn per_axis_sensitivity() {
+        let mut g = Gesture::new(GestureConfig {
+            axis_lock: false,
+            sensitivity_v: 10.0,
+            sensitivity_h: 20.0,
+            ..GestureConfig::default()
+        });
+        g.handle(Input::MiddleDown { x: 0, y: 0 });
+        assert_eq!(
+            g.handle(Input::Move { x: 4, y: -4 }).emit,
+            vec![Output::Wheel(40), Output::HWheel(80)]
+        );
+        // New settings apply to the next move
+        g.set_config(GestureConfig {
+            axis_lock: false,
+            sensitivity_v: 5.0,
+            ..GestureConfig::default()
+        });
+        assert_eq!(
+            g.handle(Input::Move { x: 0, y: -2 }).emit,
+            vec![Output::Wheel(10)]
         );
     }
 

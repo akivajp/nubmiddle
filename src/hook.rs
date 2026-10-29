@@ -17,7 +17,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::cursor::Indicator;
-use crate::gesture::{Gesture, Input, Output};
+use crate::gesture::{Gesture, GestureConfig, Input, Output};
 use crate::logger::Logger;
 use crate::output::MAGIC;
 use crate::process;
@@ -87,6 +87,15 @@ pub fn set_paused(paused: bool) {
                 let _ = cursor.send(Indicator::Off);
             }
             ctx.log.log(if paused { "paused" } else { "resumed" });
+        }
+    });
+}
+
+/// Replaces the gesture settings. Must be called on the thread running [`run`].
+pub fn set_config(config: GestureConfig) {
+    CONTEXT.with(|c| {
+        if let Some(ctx) = c.borrow_mut().as_mut() {
+            ctx.gesture.set_config(config);
         }
     });
 }

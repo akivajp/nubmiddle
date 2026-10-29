@@ -19,6 +19,7 @@ mod logger;
 mod output;
 #[cfg(windows)]
 mod process;
+mod settings;
 #[cfg(windows)]
 mod tray;
 
@@ -95,12 +96,30 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let g = &opts.gesture;
     log.log(format!("nubmiddle {} started", env!("CARGO_PKG_VERSION")));
+    // Settings: defaults < settings file < command line
+    let settings_path = opts
+        .config_file
+        .clone()
+        .unwrap_or_else(settings::default_path);
+    let (saved, warnings) = settings::load(&settings_path);
     log.log(format!(
-        "settings: mode={:?} threshold={}px sensitivity={} hwheel={} axis_lock={} invert_v={} invert_h={} quantize={} cursor={} hold_delay={}ms trace={}",
-        g.mode, g.threshold, g.sensitivity, g.horizontal, g.axis_lock, g.invert_vertical,
-        g.invert_horizontal, g.quantize, opts.cursor, opts.hold_delay_ms, opts.trace
+        "settings file: {}{}",
+        settings_path.display(),
+        if settings_path.exists() {
+            ""
+        } else {
+            " (not created yet; uses defaults)"
+        }
+    ));
+    for w in warnings {
+        log.log(format!("[warn] {}: {w}", settings_path.display()));
+    }
+    let effective = saved.with_overrides(&opts.overrides);
+    log.log(format!(
+        "settings: {} trace={}",
+        effective.summary(),
+        opts.trace
     ));
     if let Some(path) = &opts.log_file {
         log.log(format!("log file: {}", path.display()));
@@ -120,10 +139,10 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let cursor = if opts.cursor {
+    let cursor = if effective.cursor {
         match cursor::start(
             log.clone(),
-            std::time::Duration::from_millis(opts.hold_delay_ms),
+            std::time::Duration::from_millis(effective.hold_delay_ms),
         ) {
             Ok(tx) => Some(tx),
             Err(e) => {
@@ -135,14 +154,19 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         None
     };
     // The tray window lives on this thread, whose message loop is run by hook::run
-    if let Err(e) = tray::create(log.clone(), args) {
+    let tray_settings = tray::SettingsState {
+        path: settings_path,
+        saved,
+        overrides: opts.overrides,
+    };
+    if let Err(e) = tray::create(log.clone(), args, tray_settings) {
         report_error(&e);
         return ExitCode::FAILURE;
     }
     // Ctrl+C or closing the console must not leave the scroll cursor or a dead icon behind
     unsafe { SetConsoleCtrlHandler(Some(on_console_ctrl), 1) };
     let result = hook::run(
-        gesture::Gesture::new(opts.gesture),
+        gesture::Gesture::new(effective.gesture),
         out,
         cursor,
         log,
