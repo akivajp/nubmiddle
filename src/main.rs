@@ -41,13 +41,15 @@ fn main() -> ExitCode {
         Ok(Command::Run(opts)) => run(opts, args),
         #[cfg(windows)]
         Ok(Command::RegisterAutostart { user, args }) => {
-            change_autostart(|| autostart::register(&user, &autostart::join_args(&args)))
+            run_internal(|| autostart::register(&user, &autostart::join_args(&args)))
         }
         #[cfg(windows)]
-        Ok(Command::UnregisterAutostart) => change_autostart(autostart::unregister),
+        Ok(Command::UnregisterAutostart) => run_internal(autostart::unregister),
+        #[cfg(windows)]
+        Ok(Command::Quit) => run_internal(tray::quit_running),
         #[cfg(not(windows))]
-        Ok(Command::RegisterAutostart { .. } | Command::UnregisterAutostart) => {
-            change_autostart(|| Err("autostart is available only on Windows".into()))
+        Ok(Command::RegisterAutostart { .. } | Command::UnregisterAutostart | Command::Quit) => {
+            run_internal(|| Err("autostart is available only on Windows".into()))
         }
         Err(e) => {
             report_error(&e);
@@ -65,8 +67,8 @@ fn report_error(msg: &str) {
     }
 }
 
-/// Runs the internal autostart registration mode (started elevated from the tray menu).
-fn change_autostart(change: impl FnOnce() -> Result<(), String>) -> ExitCode {
+/// Runs an internal mode: autostart (un)registration, started elevated from the tray menu, or `--quit`.
+fn run_internal(change: impl FnOnce() -> Result<(), String>) -> ExitCode {
     match change() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

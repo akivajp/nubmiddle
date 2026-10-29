@@ -1,6 +1,6 @@
-# Builds the Windows exe for x64 and ARM64.
-# - On a version tag (v*), the zips are attached to a draft GitHub release, to be reviewed and published by hand.
-# - Run it by hand (workflow_dispatch) to only build and keep the zips as workflow artifacts.
+# Builds the Windows exe for x64 and ARM64, as a zip and as an installer (Inno Setup).
+# - On a version tag (v*), the files are attached to a draft GitHub release, to be reviewed and published by hand.
+# - Run it by hand (workflow_dispatch) to only build and keep the files as workflow artifacts.
 name: Release
 
 on:
@@ -38,17 +38,29 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0, 7))" }
-          $dir = "nubmiddle-$version-${{ matrix.arch }}"
+          # "0.3.0" from the tag v0.3.0; "dev-<commit>" for manual runs
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "dev-$($env:GITHUB_SHA.Substring(0, 7))" }
+          $dir = "nubmiddle-v$version-${{ matrix.arch }}"
           New-Item -ItemType Directory $dir | Out-Null
           Copy-Item target/${{ matrix.target }}/release/nubmiddle.exe, README.md, README.ja.md, LICENSE $dir
           Compress-Archive -Path $dir -DestinationPath "$dir.zip"
-          "ZIP=$dir.zip" >> $env:GITHUB_ENV
+          Remove-Item -Recurse $dir
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc /Q "/DAppVersion=$env:VERSION" "/DArch=${{ matrix.arch }}" "/DExe=target\${{ matrix.target }}\release\nubmiddle.exe" installer\nubmiddle.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # Next to the zip, so that both upload without folders
+          Move-Item installer\Output\nubmiddle-v*-setup-*.exe .
 
       - uses: actions/upload-artifact@v4
         with:
           name: nubmiddle-${{ matrix.arch }}
-          path: ${{ env.ZIP }}
+          path: nubmiddle-v*
 
   release:
     needs: build
@@ -63,6 +75,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" nubmiddle-*.zip \
+          gh release create "$GITHUB_REF_NAME" nubmiddle-*.zip nubmiddle-*-setup-*.exe \
             --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
             --title "nubmiddle $GITHUB_REF_NAME"

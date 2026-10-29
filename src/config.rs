@@ -36,6 +36,7 @@ Options:
     --config <FILE>        Settings file to use (default: nubmiddle.ini next to
                            the exe if it exists, else %APPDATA%\\nubmiddle\\nubmiddle.ini)
     --log <FILE>           Also append the log to FILE
+    --quit                 Quit the running nubmiddle (waits until it has exited)
     --trace                Log middle button, wheel and in-gesture move events in
                            detail, including events injected by other software or
                            drivers (for troubleshooting)
@@ -269,6 +270,8 @@ pub enum Command {
     RegisterAutostart { user: String, args: Vec<String> },
     /// Delete the autostart task
     UnregisterAutostart,
+    /// Quit the running instance
+    Quit,
 }
 
 /// Parses command-line arguments (excluding the program name).
@@ -306,6 +309,7 @@ where
                 });
             }
             "--unregister-autostart" => return Ok(Command::UnregisterAutostart),
+            "--quit" => return Ok(Command::Quit),
             "--mode" => Some(("mode", value()?)),
             "--threshold" => Some(("threshold", value()?)),
             "--sensitivity" => Some(("sensitivity", value()?)),
@@ -505,6 +509,7 @@ mod tests {
             parse(&["--unregister-autostart"]).unwrap(),
             Command::UnregisterAutostart
         );
+        assert_eq!(parse(&["--quit"]).unwrap(), Command::Quit);
     }
 
     #[test]

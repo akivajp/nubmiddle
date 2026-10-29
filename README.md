@@ -13,8 +13,7 @@ middle click back, without giving up scrolling:
 Lenovo's official driver forces you to choose one or the other, and recent ThinkPads default to scrolling. Linux (Xorg / libinput) has done both
 out of the box for years; nubmiddle brings the same behavior to Windows, with nothing else bundled.
 
-> **Status: early release.** Download the zip for x64 or ARM64 from
-> [Releases](https://github.com/akivajp/nubmiddle/releases). The exe is not code-signed yet, so
+> **Status: early release.** See [Install](#install). The exe is not code-signed yet, so
 > Windows SmartScreen may warn on first start ("More info" → "Run anyway").
 
 ### Supported devices
@@ -36,6 +35,18 @@ Existing options each fall short in some way:
 
 nubmiddle aims to be single-purpose, vendor-independent (it works on the OS mouse event level, not a
 vendor API), and to manage its own autostart — including fixing it up automatically when the exe is moved.
+
+## Install
+
+Download from [Releases](https://github.com/akivajp/nubmiddle/releases) — `x64` for most PCs,
+`arm64` for Windows on ARM:
+
+- **Installer** (`nubmiddle-vX.Y.Z-setup-x64.exe`): installs for the current user without administrator
+  rights (or for all users if you choose so), adds a Start menu entry and can set up starting with
+  Windows. Running a newer installer updates in place. Uninstall from Windows Settings → Apps; your
+  settings are kept unless you choose to delete them.
+- **Portable** (`nubmiddle-vX.Y.Z-x64.zip`): extract anywhere and run `nubmiddle.exe`. Put an empty
+  `nubmiddle.ini` next to it to keep the settings there too.
 
 ## Usage
 
@@ -93,6 +104,7 @@ the instance that registered it.
 | `--hold-delay <MS>` | How long the middle button must be held before the cursor shows the four-way scroll arrow, so a quick middle click does not flash it (default: 200) |
 | `--config <FILE>` | Settings file to use (see [Settings file](#settings-file)) |
 | `--log <FILE>` | Also append the log to a file |
+| `--quit` | Quit the running nubmiddle and wait until it has exited (used by the installer) |
 | `--trace` | Log middle button / wheel events in detail, including events injected by drivers (for troubleshooting) |
 | `-h`, `--help` | Show help |
 
@@ -153,7 +165,8 @@ uv run assets/make_icons.py --preview preview.png
 - [ ] Per-process exclusion list (Blender, CAD, ...)
 - [x] Apply only to chosen devices (e.g. the TrackPoint, not external mice), using Raw Input
 - [x] Release builds for x64 / ARM64 via GitHub Actions
-- [ ] Installer (in addition to the single portable exe)
+- [x] Installer (in addition to the single portable exe)
+- [ ] Code-signed releases (e.g. through SignPath Foundation, once the project qualifies)
 
 ## License
 

@@ -17,13 +17,15 @@ use windows_sys::Win32::UI::Shell::{
     NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_WARNING, NIM_ADD, NIM_DELETE,
     NIM_MODIFY, NOTIFY_ICON_INFOTIP_FLAGS, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::WM_INPUT;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, GetCursorPos,
     HMENU, IDI_APPLICATION, LoadIconW, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
     PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow,
     TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_CLOSE, WM_ENDSESSION,
     WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    ChangeWindowMessageFilterEx, FindWindowW, MSGFLT_ALLOW, WM_INPUT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, HICON, IMAGE_ICON, LR_SHARED, LoadImageW, SM_CXSMICON, SM_CYSMICON,
@@ -66,6 +68,9 @@ const ID_DEV_ALL: usize = 60;
 /// First of the device items (one id per entry of `Tray::menu_devices`)
 const ID_DEV_FIRST: usize = 61;
 const MAX_DEVICES: usize = 30;
+
+/// Window class of the hidden tray window (also used by `--quit` to find a running instance).
+const CLASS_NAME: &str = "nubmiddle.tray";
 
 /// Id of our icon within the window.
 const ICON_ID: u32 = 1;
@@ -131,7 +136,7 @@ pub fn create(
 ) -> Result<(), String> {
     unsafe {
         let instance = GetModuleHandleW(null());
-        let class = wide("nubmiddle.tray");
+        let class = wide(CLASS_NAME);
         let mut wc: WNDCLASSW = std::mem::zeroed();
         wc.lpfnWndProc = Some(wnd_proc);
         wc.hInstance = instance;
@@ -165,6 +170,8 @@ pub fn create(
             ));
         }
         HWND_TRAY.store(hwnd, Ordering::Release);
+        // Let `nubmiddle --quit` close us even when we run elevated and it does not (UIPI)
+        ChangeWindowMessageFilterEx(hwnd, WM_CLOSE, MSGFLT_ALLOW, null_mut());
         let msg_taskbar_created = RegisterWindowMessageW(wide("TaskbarCreated").as_ptr());
         TRAY.with(|t| {
             *t.borrow_mut() = Some(Tray {
@@ -211,6 +218,31 @@ pub fn remove_icon() {
         nid.uFlags = 0;
         Shell_NotifyIconW(NIM_DELETE, &nid);
     }
+}
+
+/// Quits the running instance (for `--quit`, used by the installer): asks its tray window to
+/// close, then waits until the window is gone. Succeeds if nothing is running.
+pub fn quit_running() -> Result<(), String> {
+    let class = wide(CLASS_NAME);
+    let find = || unsafe { FindWindowW(class.as_ptr(), null()) };
+    let hwnd = find();
+    if hwnd.is_null() {
+        return Ok(());
+    }
+    if unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) } == 0 {
+        return Err(format!(
+            "cannot ask nubmiddle to quit: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    // The window goes away when the process exits; give it up to 10 seconds
+    for _ in 0..100 {
+        if find().is_null() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Err("nubmiddle did not quit within 10 seconds".into())
 }
 
 /// Asks the hook thread to quit (e.g. on Ctrl+C). Returns false if there is no tray window yet.
