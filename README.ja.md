@@ -11,7 +11,9 @@
 Lenovo 公式ドライバではどちらか一方しか選べず、最近の ThinkPad では既定がスクロールになっています。Linux (Xorg / libinput) では以前から両立できており、
 nubmiddle は同じ挙動を Windows で、余計な機能なしに実現します。
 
-> **状態: 初期の試作版です。** リリースビルドはまだありません ([今後の予定](#今後の予定) を参照)。
+> **状態: 初期のリリースです。** x64 版と ARM64 版の zip を [Releases](https://github.com/akivajp/nubmiddle/releases)
+> からダウンロードできます。exe にはまだコード署名が無いため、初回起動時に Windows SmartScreen の警告が
+> 出ることがあります (「詳細情報」→「実行」で起動できます)。
 
 ### 対応デバイス
 
@@ -149,7 +151,7 @@ uv run assets/make_icons.py --preview preview.png
 - [x] 設定ファイル (ポータブル運用向けに exe と同じフォルダの ini)
 - [ ] プロセス単位の除外リスト (Blender、CAD 等)
 - [x] 選んだデバイスだけに適用する (外付けマウスには適用せずトラックポイントだけ等。Raw Input を利用)
-- [ ] GitHub Actions による x64 / ARM64 のリリースビルド
+- [x] GitHub Actions による x64 / ARM64 のリリースビルド
 - [ ] インストーラー (単体の exe に加えて)
 
 ## ライセンス

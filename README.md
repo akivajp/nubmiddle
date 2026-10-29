@@ -11,8 +11,9 @@ middle click back, without giving up scrolling:
 Lenovo's official driver forces you to choose one or the other, and recent ThinkPads default to scrolling. Linux (Xorg / libinput) has done both
 out of the box for years; nubmiddle brings the same behavior to Windows, with nothing else bundled.
 
-> **Status: early prototype.** Release builds are not available yet —
-> see [Roadmap](#roadmap).
+> **Status: early release.** Download the zip for x64 or ARM64 from
+> [Releases](https://github.com/akivajp/nubmiddle/releases). The exe is not code-signed yet, so
+> Windows SmartScreen may warn on first start ("More info" → "Run anyway").
 
 ### Supported devices
 
@@ -149,7 +150,7 @@ uv run assets/make_icons.py --preview preview.png
 - [x] Settings file (ini next to the exe, for portable use)
 - [ ] Per-process exclusion list (Blender, CAD, ...)
 - [x] Apply only to chosen devices (e.g. the TrackPoint, not external mice), using Raw Input
-- [ ] Release builds for x64 / ARM64 via GitHub Actions
+- [x] Release builds for x64 / ARM64 via GitHub Actions
 - [ ] Installer (in addition to the single portable exe)
 
 ## License
