@@ -38,7 +38,13 @@ vendor API), and to manage its own autostart — including fixing it up automati
 
 ## Install
 
-Download from [Releases](https://github.com/akivajp/nubmiddle/releases) — `x64` for most PCs,
+- **Microsoft Store** (recommended; the listing is being submitted — the link will appear here).
+  Signed by the Store (no SmartScreen warning) and updated by it. It keeps its settings in the
+  package's folder, `%LOCALAPPDATA%\Packages\C2B504BA.nubmiddle_1raghr5p0ryyw\LocalState`
+  (removed with the app), and its "Start with Windows" runs without administrator rights, so this
+  version does not scroll [elevated windows](#elevated-windows).
+
+The other ways, from [Releases](https://github.com/akivajp/nubmiddle/releases) — `x64` for most PCs,
 `arm64` for Windows on ARM:
 
 - **Installer** (`nubmiddle-vX.Y.Z-setup-x64.exe`): installs for the current user without administrator
@@ -119,7 +125,8 @@ is an event synthesized by other software or a driver.
 
 Because of Windows UIPI, a normal process cannot scroll windows running as administrator
 (e.g. an elevated terminal). Run nubmiddle as administrator to make it work there too;
-"Start with Windows" in the tray menu does this for you.
+"Start with Windows" in the tray menu does this for you (the installer and the zip; the Store
+version's startup task cannot be elevated, so it does not scroll elevated windows).
 
 ## How it works
 
@@ -129,6 +136,22 @@ Because of Windows UIPI, a normal process cannot scroll windows running as admin
 3. If the button is released before that, the held down/up pair is replayed as a middle click.
 
 Events sent by nubmiddle itself are tagged via `dwExtraInfo` so the hook does not process them again.
+
+## Privacy
+
+nubmiddle collects no data and makes no network connections. What it does touch:
+
+- **Mouse input.** A low-level mouse hook receives every mouse event of the session (it has to,
+  to act on the middle button); it looks only at the middle button and at movement while the
+  middle button is held, and passes everything else through untouched. It never records input.
+- **Mouse devices.** Raw Input tells it which device a middle press came from, so that only the
+  chosen devices scroll. Device vendor and product ids (such as `17EF:6009`) are saved in the
+  settings file when you choose devices.
+- **Windows under the cursor.** With `--trace` only, the log names the process and window under the
+  middle press, for troubleshooting; the log stays on your PC.
+- **Files.** The settings file (`nubmiddle.ini`) and, if you ask for one with `--log`, a log file.
+- **System cursors.** While scrolling, the system cursors are temporarily replaced with the arrow
+  showing the scroll axis, and restored afterwards.
 
 ## Building
 
