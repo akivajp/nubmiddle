@@ -27,6 +27,29 @@ pub fn vid_pid(name: &str) -> Option<String> {
     Some(format!("{vid}:{pid}"))
 }
 
+/// Id of a device for the settings: "VVVV:PPPP" when the name has vendor and product ids,
+/// otherwise the bus and device segments of the interface name, e.g. `ACPI\PNP0F13` for the
+/// PS/2 TrackPoint of a ThinkPad (`\\?\ACPI#PNP0F13#4&1a2b3c4d&0#{...}`). None for names
+/// that have neither.
+pub fn short_id(name: &str) -> Option<String> {
+    if let Some(id) = vid_pid(name) {
+        return Some(id);
+    }
+    let rest = name.strip_prefix(r"\\?\")?;
+    let mut parts = rest.split('#');
+    let (bus, device) = (parts.next()?, parts.next()?);
+    (!bus.is_empty() && !device.is_empty() && !device.starts_with('{'))
+        .then(|| format!("{bus}\\{device}"))
+}
+
+/// The device instance id (`ACPI\PNP0F13\4&1a2b3c4d&0`) of a device interface name
+/// (`\\?\ACPI#PNP0F13#4&1a2b3c4d&0#{guid}`), for looking the device up in the device tree.
+pub fn instance_id(name: &str) -> Option<String> {
+    let rest = name.strip_prefix(r"\\?\")?;
+    let end = rest.find("#{")?;
+    Some(rest[..end].replace('#', "\\"))
+}
+
 #[cfg(windows)]
 pub use self::windows::*;
 
@@ -45,7 +68,7 @@ mod windows {
         RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP,
     };
 
-    use super::vid_pid;
+    use super::{instance_id, short_id, vid_pid};
 
     /// One mouse raw input event.
     #[derive(Debug, Clone, Copy)]
@@ -155,7 +178,51 @@ mod windows {
             return None;
         }
         let name = device_name(device);
-        Some(vid_pid(&name).unwrap_or(name))
+        Some(short_id(&name).unwrap_or(name))
+    }
+
+    /// The device's description from the device tree (e.g. "PS/2 Compatible Mouse" or
+    /// "ThinkPad TrackPoint"), for devices that report no product name (PS/2 and the like).
+    pub fn device_description(device: HANDLE) -> Option<String> {
+        use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+            CM_Get_DevNode_PropertyW, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_SUCCESS,
+        };
+        use windows_sys::Win32::Devices::Properties::{
+            DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_FriendlyName, DEVPROPTYPE,
+        };
+
+        let id: Vec<u16> = instance_id(&device_name(device))?
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        unsafe {
+            let mut node = 0u32;
+            if CM_Locate_DevNodeW(&mut node, id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS {
+                return None;
+            }
+            // The friendly name if the driver sets one, else the description
+            for key in [&DEVPKEY_Device_FriendlyName, &DEVPKEY_Device_DeviceDesc] {
+                let mut kind: DEVPROPTYPE = 0;
+                let mut buf = [0u16; 256];
+                let mut size = (buf.len() * 2) as u32;
+                let ok = CM_Get_DevNode_PropertyW(
+                    node,
+                    key,
+                    &mut kind,
+                    buf.as_mut_ptr().cast(),
+                    &mut size,
+                    0,
+                );
+                if ok == CR_SUCCESS && size >= 2 {
+                    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                    let text = String::from_utf16_lossy(&buf[..end]).trim().to_string();
+                    if !text.is_empty() {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Short description of a device for logs: "VVVV:PPPP" plus its interface name.
@@ -212,11 +279,13 @@ mod windows {
             let Some(id) = device_id(device) else {
                 continue;
             };
+            // The HID product name, else the device tree's description (PS/2 devices)
+            let label = || product_name(device).or_else(|| device_description(device));
             match out.iter_mut().find(|(known, _)| *known == id) {
-                // Keep the first readable product name
-                Some((_, name @ None)) => *name = product_name(device),
+                // Keep the first readable name
+                Some((_, name @ None)) => *name = label(),
                 Some(_) => {}
-                None => out.push((id, product_name(device))),
+                None => out.push((id, label())),
             }
         }
         out
@@ -245,6 +314,36 @@ mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_id_falls_back_to_bus_and_device() {
+        assert_eq!(
+            short_id(r"\\?\HID#VID_17EF&PID_6009&MI_01&Col01#a&360f333c&0&0000#{378de44c}"),
+            Some("17EF:6009".into())
+        );
+        assert_eq!(
+            short_id(r"\\?\ACPI#PNP0F13#4&1a2b3c4d&0#{378de44c-56ef-11d1-bc8c-00a0c91405dd}"),
+            Some(r"ACPI\PNP0F13".into())
+        );
+        assert_eq!(
+            short_id(r"\\?\Root#RDP_MOU#0000#{378de44c}"),
+            Some(r"Root\RDP_MOU".into())
+        );
+        assert_eq!(short_id("nonsense"), None);
+    }
+
+    #[test]
+    fn instance_id_from_interface_name() {
+        assert_eq!(
+            instance_id(r"\\?\ACPI#PNP0F13#4&1a2b3c4d&0#{378de44c-56ef-11d1-bc8c-00a0c91405dd}"),
+            Some(r"ACPI\PNP0F13\4&1a2b3c4d&0".into())
+        );
+        assert_eq!(
+            instance_id(r"\\?\HID#VID_17EF&PID_6009&MI_01&Col01#a&360f333c&0&0000#{378de44c}"),
+            Some(r"HID\VID_17EF&PID_6009&MI_01&Col01\a&360f333c&0&0000".into())
+        );
+        assert_eq!(instance_id("nonsense"), None);
+    }
 
     #[test]
     fn vid_pid_from_interface_names() {

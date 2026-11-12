@@ -11,7 +11,9 @@ repository = "https://github.com/akivajp/nubmiddle"
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
 features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Devices_Properties",
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
