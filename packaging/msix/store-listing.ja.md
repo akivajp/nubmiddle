@@ -58,7 +58,7 @@ Markdown を表示した状態からコピーして、欄に貼っていく想�
 | | 英語 (米国) | 日本語 |
 | --- | --- | --- |
 | **説明** | `store/en-us.toml` の `description` | `store/ja-jp.toml` の `description` |
-| **スクリーンショット** (1 枚) | `store/screenshots/en-1-scroll.png` | `store/screenshots/ja-1-scroll.png` |
+| **スクリーンショット** (1 枚) | `store/screenshots/en-1-hint.png` | `store/screenshots/ja-1-hint.png` |
 
 説明は、箇条書きの改行が消えないよう、TOML を直接開いてコピーする。
 
@@ -66,11 +66,15 @@ Markdown を表示した状態からコピーして、欄に貼っていく想�
 
 - 英語:
 
-  > Hold the middle button and push the stick: the page scrolls and the cursor shows the direction
+  > nubmiddle runs in the notification area; on start it shows where to find it
 
 - 日本語:
 
-  > 中ボタンを押したままスティックを倒すとスクロール。カーソルが向きを示します
+  > nubmiddle は通知領域で動作します。起動するとアイコンの場所を案内します
+
+**スクリーンショットには nubmiddle 自身の画面 (通知・トレイメニュー) だけを使う。** nubmiddle は画面を持たないため、
+ブラウザなどをスクロールしている画面は「製品の機能を示していない」として認定に落ちる
+(2026-11-12、ポリシー 10.1.1.3 Inaccurate Representation)。
 
 製品の機能・検索用語・著作権・開発元・残りのスクリーンショットは入れない (2 回目に API で入れる)。
 
@@ -78,6 +82,14 @@ Microsoft Store ロゴ (任意):
 
 - **1:1 のボックス アート**: `StoreBoxArt-1080.png` (`assets/make_icons.py` が生成)
 - **9:16 のポスター アート**・**タイル アイコン**: 空のまま
+
+## 認定に落ちたとき (2026-11-13、1 回目)
+
+10.1.1.3 (スクリーンショットが製品を示していない) で落ちた。Partner Center の同じ申請を開いて直し、もう一度提出する。
+
+1. **ストア登録情報** (英語・日本語): スクリーンショットを削除し、上の表の `*-1-hint.png` に差し替える (キャプションも上のとおり)
+2. **追加のテスト情報**: 「申請オプション」の認定の注意書きの英語の文が入っているか確かめる (API で読むと空だった)
+3. 「ストアに提出」
 
 ## 公開後
 

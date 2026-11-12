@@ -56,17 +56,17 @@ developed_by = "Akiva Miura"
 # 差し替えるのは、ワークフローを images = true で動かしたときだけ。
 
 [[screenshots]]
-file = "screenshots/ja-1-scroll.png"
-caption = "中ボタンを押したままスティックを倒すとスクロール。カーソルが向きを示します"
+file = "screenshots/ja-1-hint.png"
+caption = "nubmiddle は通知領域で動作します。起動するとアイコンの場所を案内します"
 
 [[screenshots]]
-file = "screenshots/ja-2-menu.png"
-caption = "設定はすべてトレイメニューに: モード、スクロールの速さ、デバイス、言語"
+file = "screenshots/ja-2-speed.png"
+caption = "縦・横それぞれ 5 段階のスクロールの速さを、トレイメニューから選べます"
 
 [[screenshots]]
 file = "screenshots/ja-3-devices.png"
-caption = "トラックポイントだけでスクロールし、マウスの中ボタンドラッグは残す"
+caption = "スクロールするデバイスを選べます。トラックポイントだけにすれば、マウスの中ボタンドラッグはそのまま"
 
 [[screenshots]]
-file = "screenshots/ja-4-settings.png"
-caption = "設定は小さなテキストファイル。編集して読み込み直せます"
+file = "screenshots/ja-4-mode.png"
+caption = "スクロールと、通常の中ボタンドラッグを切り替えられます"

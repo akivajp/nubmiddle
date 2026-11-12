@@ -56,17 +56,17 @@ developed_by = "Akiva Miura"
 # workflow runs with images = true.
 
 [[screenshots]]
-file = "screenshots/en-1-scroll.png"
-caption = "Hold the middle button and push the stick: the page scrolls and the cursor shows the direction"
+file = "screenshots/en-1-hint.png"
+caption = "nubmiddle runs in the notification area; on start it shows where to find it"
 
 [[screenshots]]
-file = "screenshots/en-2-menu.png"
-caption = "Every setting is in the tray menu: mode, scroll speeds, devices, language"
+file = "screenshots/en-2-speed.png"
+caption = "Five vertical and horizontal scroll speeds, right from the tray menu"
 
 [[screenshots]]
 file = "screenshots/en-3-devices.png"
-caption = "Scroll with the TrackPoint only, and keep the mouse's middle-button drag"
+caption = "Choose the devices that scroll, e.g. only the TrackPoint, so a mouse keeps its middle-button drag"
 
 [[screenshots]]
-file = "screenshots/en-4-settings.png"
-caption = "The settings are a small text file you can edit and reload"
+file = "screenshots/en-4-mode.png"
+caption = "Switch between scrolling and a plain middle-button drag"
