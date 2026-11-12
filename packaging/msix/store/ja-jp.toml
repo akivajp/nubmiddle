@@ -1,0 +1,72 @@
+# nubmiddle の Microsoft Store の掲載情報 (日本語)。Microsoft Store のワークフロー
+# (.github/workflows/msstore.yml、akivajp/msstore-submit) で反映する。
+# 書かなかった項目は、前回の申請の値のまま。
+
+title = "nubmiddle"
+short_description = "トラックポイント型スティックの中ボタンで、中クリックとスクロールの両方を。クリックで中クリック、押したままスティックを倒すとスクロールします。"
+description = '''
+nubmiddle は、トラックポイント型ポインティングスティックの中ボタンに、スクロールを諦めずに中クリックを取り戻します。
+
+• 中ボタンをクリック: 通常の中クリック (タブを閉じる、リンクを新しいタブで開く、など)
+• 中ボタンを押したままスティックを倒す: 縦・横スクロール
+
+Lenovo のドライバーではどちらか一方しか選べず、最近の ThinkPad では既定がスクロールになっています。nubmiddle は Linux が以前からしているように、両方をこなします。
+
+スクロール中はカーソルがその場に留まり、スクロールの向きを示す矢印になります。スクロールは始めた向きの軸に固定されるので、手がぶれても横に流れません。
+
+ほかにも:
+• 縦・横それぞれ 5 段階の速さ (トレイメニューから)
+• スクロールするデバイスを選べます: トラックポイントだけにして、マウスでは Blender や CAD の中ボタンドラッグを残す、など
+• スクロールの代わりに中ボタンドラッグにするモード
+• Windows の起動時に開始
+• 日本語と英語
+
+nubmiddle は通知領域に常駐し、設定はすべてそのメニューにあります。Windows のマウスイベントの段階で処理するので、トラックポイントのメーカーに依存しません (ドライバーの中ボタンの設定は「中クリック」にしてください)。データを収集せず、ネットワークにも接続しません。
+
+nubmiddle は無料のオープンソース (MIT) です: https://github.com/akivajp/nubmiddle'''
+# 「このバージョンの新機能」: リリースのたびに書き換える。
+release_notes = "Microsoft Store での最初のリリースです。"
+features = [
+  "1 つのボタンで中クリックとスクロール",
+  "縦・横スクロール (始めた向きの軸に固定)",
+  "スクロールの向きを示す矢印カーソル",
+  "縦・横それぞれ 5 段階の速さ",
+  "トラックポイントだけ、またはすべてのポインティングデバイスでスクロール",
+  "中ボタンドラッグのモード",
+  "Windows の起動時に開始",
+  "日本語と英語",
+  "データ収集なし、ネットワーク接続なし",
+  "無料のオープンソース",
+]
+# 検索用語 (7 つまで)。
+keywords = [
+  "トラックポイント",
+  "中ボタン",
+  "中クリック",
+  "ポインティングスティック",
+  "スクロール",
+  "ThinkPad",
+  "マウス",
+]
+copyright = "Copyright (c) 2026 Akiva Miura"
+license_terms = "MIT License: https://github.com/akivajp/nubmiddle/blob/main/LICENSE"
+developed_by = "Akiva Miura"
+
+# スクリーンショット (PNG、1366×768 以上)。この順に登録する。
+# 差し替えるのは、ワークフローを images = true で動かしたときだけ。
+
+[[screenshots]]
+file = "screenshots/ja-1-scroll.png"
+caption = "中ボタンを押したままスティックを倒すとスクロール。カーソルが向きを示します"
+
+[[screenshots]]
+file = "screenshots/ja-2-menu.png"
+caption = "設定はすべてトレイメニューに: モード、スクロールの速さ、デバイス、言語"
+
+[[screenshots]]
+file = "screenshots/ja-3-devices.png"
+caption = "トラックポイントだけでスクロールし、マウスの中ボタンドラッグは残す"
+
+[[screenshots]]
+file = "screenshots/ja-4-settings.png"
+caption = "設定は小さなテキストファイル。編集して読み込み直せます"

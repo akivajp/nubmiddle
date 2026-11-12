@@ -1,0 +1,72 @@
+# nubmiddle's Microsoft Store listing in English (United States), applied by the
+# Microsoft Store workflow (.github/workflows/msstore.yml, akivajp/msstore-submit).
+# Fields left out keep the values of the last submission.
+
+title = "nubmiddle"
+short_description = "Middle click and scrolling with the middle button of a TrackPoint-style pointing stick: click for a middle click, hold and push the stick to scroll."
+description = '''
+nubmiddle gives the middle button of a TrackPoint-style pointing stick its middle click back, without giving up scrolling:
+
+• Click the middle button: a normal middle click (close a tab, open a link in a new tab, paste on Linux-style terminals…)
+• Hold the middle button and push the stick: scroll vertically or horizontally
+
+Lenovo's driver makes you choose one or the other, and recent ThinkPads default to scrolling. nubmiddle does both, the way Linux has for years.
+
+While you scroll, the cursor stays where it is and turns into an arrow showing the scroll direction. Each scroll is locked to the axis it started along, so a steady hand is not needed.
+
+Also:
+• Five scroll speeds for each axis, from the tray menu
+• Choose which devices scroll: the TrackPoint only, so that a mouse keeps its middle-button drag in Blender or CAD
+• A middle-button drag mode instead of scrolling, when you want it
+• Start with Windows
+• English and Japanese
+
+nubmiddle lives in the notification area; its menu has every setting. It works at the level of Windows mouse events, so it does not depend on the TrackPoint's vendor (set the driver's middle button to "middle click"). It collects no data and makes no network connections.
+
+nubmiddle is free and open source (MIT): https://github.com/akivajp/nubmiddle'''
+# "What's new in this version": rewrite for each release.
+release_notes = "First Microsoft Store release."
+features = [
+  "Middle click and scrolling with one button",
+  "Vertical and horizontal scrolling, locked to the axis you start along",
+  "An arrow cursor showing the scroll direction",
+  "Five scroll speeds for each axis",
+  "Scroll with the TrackPoint only, or with every pointing device",
+  "Middle-button drag mode",
+  "Starts with Windows if you like",
+  "English and Japanese",
+  "No data collection, no network",
+  "Free and open source",
+]
+# Search terms, 7 at most.
+keywords = [
+  "TrackPoint",
+  "middle button",
+  "middle click",
+  "pointing stick",
+  "scroll",
+  "ThinkPad",
+  "mouse",
+]
+copyright = "Copyright (c) 2026 Akiva Miura"
+license_terms = "MIT License: https://github.com/akivajp/nubmiddle/blob/main/LICENSE"
+developed_by = "Akiva Miura"
+
+# Screenshots (PNG, 1366x768 or larger), in this order; replaced only when the
+# workflow runs with images = true.
+
+[[screenshots]]
+file = "screenshots/en-1-scroll.png"
+caption = "Hold the middle button and push the stick: the page scrolls and the cursor shows the direction"
+
+[[screenshots]]
+file = "screenshots/en-2-menu.png"
+caption = "Every setting is in the tray menu: mode, scroll speeds, devices, language"
+
+[[screenshots]]
+file = "screenshots/en-3-devices.png"
+caption = "Scroll with the TrackPoint only, and keep the mouse's middle-button drag"
+
+[[screenshots]]
+file = "screenshots/en-4-settings.png"
+caption = "The settings are a small text file you can edit and reload"
