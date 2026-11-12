@@ -52,14 +52,27 @@ Markdown を表示した状態からコピーして、欄に貼っていく想�
 
 ## ストア登録情報
 
-1 回目は **英語 (米国) だけ**を追加し、次の 2 つだけ入れる。
+パッケージのマニフェストが英語 (`en-us`) と日本語 (`ja-jp`) を宣言しているので、**この 2 つの言語はどちらも必須**になる
+(Partner Center が自動で 2 つの言語の欄を出す)。どちらも次の 2 つだけ入れる。
 
-- **説明**: `store/en-us.toml` の `description` をそのまま貼る (箇条書きの改行が消えないよう、TOML を直接開いてコピーする)
-- **スクリーンショット**: `store/screenshots/en-1-scroll.png` を 1 枚。キャプション (200 文字まで):
+| | 英語 (米国) | 日本語 |
+| --- | --- | --- |
+| **説明** | `store/en-us.toml` の `description` | `store/ja-jp.toml` の `description` |
+| **スクリーンショット** (1 枚) | `store/screenshots/en-1-scroll.png` | `store/screenshots/ja-1-scroll.png` |
+
+説明は、箇条書きの改行が消えないよう、TOML を直接開いてコピーする。
+
+スクリーンショットのキャプション (200 文字まで):
+
+- 英語:
 
   > Hold the middle button and push the stick: the page scrolls and the cursor shows the direction
 
-製品の機能・検索用語・著作権・開発元・残りのスクリーンショット・日本語の掲載情報は入れない (2 回目に API で入れる)。
+- 日本語:
+
+  > 中ボタンを押したままスティックを倒すとスクロール。カーソルが向きを示します
+
+製品の機能・検索用語・著作権・開発元・残りのスクリーンショットは入れない (2 回目に API で入れる)。
 
 Microsoft Store ロゴ (任意):
 
