@@ -4,6 +4,7 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/nubmiddle.rc");
     println!("cargo:rerun-if-changed=assets/nubmiddle.ico");
     println!("cargo:rerun-if-changed=assets/nubmiddle-paused.ico");
+    println!("cargo:rerun-if-changed=assets/nubmiddle.exe.manifest");
     embed_resource::compile("assets/nubmiddle.rc", embed_resource::NONE)
         .manifest_optional()
         .unwrap();

@@ -2,3 +2,5 @@
 // The icon with the lowest id is the one Explorer shows for the exe.
 1 ICON "nubmiddle.ico"
 2 ICON "nubmiddle-paused.ico"
+// The application manifest (DPI awareness, supported Windows versions); 24 = RT_MANIFEST
+1 24 "nubmiddle.exe.manifest"
