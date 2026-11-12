@@ -39,6 +39,7 @@ use crate::gesture::MoveMode;
 use crate::hook;
 use crate::i18n::{Lang, LangSetting, Text, tr, trf};
 use crate::logger::Logger;
+use crate::package;
 use crate::process;
 use crate::rawinput;
 use crate::settings;
@@ -47,6 +48,8 @@ use crate::settings;
 const WM_TRAY: u32 = WM_APP + 1;
 /// A worker thread reports the autostart status. `lparam` is a `Box<Status>` raw pointer.
 const WM_AUTOSTART_STATUS: u32 = WM_APP + 2;
+/// Another instance was started while we run: point at the icon (`show_running_hint`).
+const WM_SHOW_HINT: u32 = WM_APP + 3;
 
 /// Menu item ids.
 const ID_AUTOSTART: usize = 1;
@@ -124,6 +127,8 @@ pub struct SettingsState {
     pub saved: Settings,
     /// Command-line settings applied over them
     pub overrides: Vec<(String, String)>,
+    /// No settings file existed: the first start, worth a hint about where nubmiddle went
+    pub first_start: bool,
 }
 
 /// Creates the hidden window and the tray icon, then checks the autostart task in the background.
@@ -192,6 +197,11 @@ pub fn create(
                 std::io::Error::last_os_error()
             ));
         }
+        // Let a second instance (even a non-elevated one, UIPI) ask us to show the hint
+        ChangeWindowMessageFilterEx(hwnd, WM_SHOW_HINT, MSGFLT_ALLOW, null_mut());
+        if settings.first_start {
+            running_hint(hwnd);
+        }
         // Raw input tells which device a middle press comes from (for "Devices that scroll")
         match rawinput::register(hwnd) {
             Ok(()) => {
@@ -218,6 +228,25 @@ pub fn remove_icon() {
         nid.uFlags = 0;
         Shell_NotifyIconW(NIM_DELETE, &nid);
     }
+}
+
+/// Shows the hint that nubmiddle runs in the notification area.
+fn running_hint(hwnd: HWND) {
+    let lang = current_lang();
+    notify(
+        hwnd,
+        NIIF_INFO,
+        tr(lang, Text::RunningHintTitle),
+        tr(lang, Text::RunningHintBody),
+    );
+}
+
+/// Asks the running instance to show its hint (when started while it runs, e.g. "Open" in the
+/// Store). Returns false if none is running.
+pub fn show_running_hint() -> bool {
+    let class = wide(CLASS_NAME);
+    let hwnd = unsafe { FindWindowW(class.as_ptr(), null()) };
+    !hwnd.is_null() && unsafe { PostMessageW(hwnd, WM_SHOW_HINT, 0, 0) } != 0
 }
 
 /// Quits the running instance (for `--quit`, used by the installer): asks its tray window to
@@ -327,6 +356,17 @@ fn notify(hwnd: HWND, kind: NOTIFY_ICON_INFOTIP_FLAGS, title: &str, text: &str) 
     unsafe { Shell_NotifyIconW(NIM_MODIFY, &nid) };
 }
 
+/// A worker thread asks for a warning balloon. `lparam` is a `Box<String>` raw pointer.
+const WM_WARNING: u32 = WM_APP + 4;
+
+/// Shows `text` as a warning balloon from a worker thread.
+fn post_warning(hwnd: usize, text: String) {
+    let ptr = Box::into_raw(Box::new(text));
+    if unsafe { PostMessageW(hwnd as HWND, WM_WARNING, 0, ptr as LPARAM) } == 0 {
+        drop(unsafe { Box::from_raw(ptr) });
+    }
+}
+
 /// Sends a worker's autostart status back to the tray window.
 fn post_status(hwnd: usize, status: Status) {
     let ptr = Box::into_raw(Box::new(status));
@@ -343,6 +383,12 @@ fn check_autostart(hwnd: HWND, log: Logger) {
     let _ = thread::Builder::new()
         .name("autostart-check".into())
         .spawn(move || {
+            if package::is_packaged() {
+                let status = packaged_status(&log);
+                log.log(format!("autostart (startup task): {status:?}"));
+                post_status(hwnd, status);
+                return;
+            }
             let mut status = autostart::status();
             if let Status::Stale(task) = &status {
                 log.log(format!(
@@ -362,12 +408,39 @@ fn check_autostart(hwnd: HWND, log: Logger) {
         });
 }
 
+/// Autostart status of the Store package (its startup task; never stale, the path is the package's).
+fn packaged_status(log: &Logger) -> Status {
+    match package::startup_task::is_enabled() {
+        Ok(true) => Status::Registered,
+        Ok(false) => Status::NotRegistered,
+        Err(e) => {
+            log.log(format!("[warn] {e}"));
+            Status::NotRegistered
+        }
+    }
+}
+
 /// Registers or deletes the autostart task in the background (with a UAC prompt unless elevated).
+/// From the Store package, turns the package's startup task on or off instead (no prompt).
 fn toggle_autostart(hwnd: HWND, log: Logger, register: bool, args: Vec<String>) {
     let hwnd = hwnd as usize;
     let _ = thread::Builder::new()
         .name("autostart-change".into())
         .spawn(move || {
+            if package::is_packaged() {
+                match package::startup_task::set(register) {
+                    Ok(()) => log.log(format!(
+                        "startup task: {}",
+                        if register { "on" } else { "off" }
+                    )),
+                    Err(e) => {
+                        log.log(format!("[warn] {e}"));
+                        post_warning(hwnd, e);
+                    }
+                }
+                post_status(hwnd, packaged_status(&log));
+                return;
+            }
             let user = autostart::current_user();
             let result = if process::is_current_elevated() {
                 if register {
@@ -731,10 +804,16 @@ fn show_menu(hwnd: HWND) {
         AppendMenuW(menu, MF_POPUP, language as usize, language_label.as_ptr());
         AppendMenuW(menu, MF_SEPARATOR, 0, null());
 
+        // The Store package's startup task cannot be elevated, so its label does not promise it
+        let plain = if package::is_packaged() {
+            Text::AutostartPackaged
+        } else {
+            Text::Autostart
+        };
         let (label, checked, grayed) = match &autostart {
             None => (Text::AutostartChecking, false, true),
-            Some(Status::NotRegistered) => (Text::Autostart, false, false),
-            Some(Status::Registered) => (Text::Autostart, true, false),
+            Some(Status::NotRegistered) => (plain, false, false),
+            Some(Status::Registered) => (plain, true, false),
             Some(Status::Stale(_)) => (Text::AutostartUpdate, false, false),
         };
         append(menu, ID_AUTOSTART, t(label), checked, grayed);
@@ -847,6 +926,15 @@ unsafe extern "system" fn wnd_proc(
             }
             // DefWindowProc releases the raw input buffer
             unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_SHOW_HINT => {
+            running_hint(hwnd);
+            0
+        }
+        WM_WARNING => {
+            let text = *unsafe { Box::from_raw(lparam as *mut String) };
+            notify(hwnd, NIIF_WARNING, "nubmiddle", &text);
+            0
         }
         WM_CLOSE => {
             // Ctrl+C in the console, or another polite close request

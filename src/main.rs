@@ -19,6 +19,8 @@ mod logger;
 #[cfg(windows)]
 mod output;
 #[cfg(windows)]
+mod package;
+#[cfg(windows)]
 mod process;
 mod rawinput;
 mod settings;
@@ -84,10 +86,13 @@ fn run_internal(change: impl FnOnce() -> Result<(), String>) -> ExitCode {
 fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
     use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
 
-    // Only one instance: a second hook would process every event twice
+    // Only one instance: a second hook would process every event twice. Starting it again
+    // (e.g. "Open" in the Store while it runs) just makes the running one point at its icon
     if !single_instance() {
-        report_error("nubmiddle is already running (see the notification area)");
-        return ExitCode::FAILURE;
+        if !tray::show_running_hint() {
+            report_error("nubmiddle is already running (see the notification area)");
+        }
+        return ExitCode::SUCCESS;
     }
     if legacy_running() {
         report_error("an earlier version (nubscroll) is running: quit it from its tray menu first");
@@ -107,15 +112,20 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         .clone()
         .unwrap_or_else(settings::default_path);
     let (saved, warnings) = settings::load(&settings_path);
+    // No settings file yet: the first start, so say where nubmiddle went (the tray)
+    let first_start = !settings_path.exists();
     log.log(format!(
         "settings file: {}{}",
         settings_path.display(),
-        if settings_path.exists() {
-            ""
-        } else {
+        if first_start {
             " (not created yet; uses defaults)"
+        } else {
+            ""
         }
     ));
+    if let Some(family) = package::family_name() {
+        log.log(format!("running from the package {family}"));
+    }
     for w in warnings {
         log.log(format!("[warn] {}: {w}", settings_path.display()));
     }
@@ -162,6 +172,7 @@ fn run(opts: config::Options, args: Vec<String>) -> ExitCode {
         path: settings_path,
         saved,
         overrides: opts.overrides,
+        first_start,
     };
     if let Err(e) = tray::create(log.clone(), args, tray_settings, opts.trace) {
         report_error(&e);

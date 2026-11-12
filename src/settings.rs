@@ -2,7 +2,9 @@
 //!
 //! `nubmiddle.ini` next to the exe wins if it exists (portable use, e.g. an exe kept in a
 //! synced folder); otherwise the file lives in `%APPDATA%\nubmiddle\`, which also works when the
-//! exe is installed in a read-only location such as Program Files.
+//! exe is installed in a read-only location such as Program Files. From the Microsoft Store
+//! (an MSIX package) it lives in the package's `LocalState` folder instead: a packaged app's
+//! writes to `%APPDATA%` are redirected to a private copy that Notepad would not see.
 
 use std::path::{Path, PathBuf};
 
@@ -28,6 +30,10 @@ pub fn choose(exe_dir: Option<&Path>, appdata: Option<&Path>) -> PathBuf {
 
 /// The settings file for the running exe.
 pub fn default_path() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(dir) = crate::package::local_state() {
+        return dir.join(FILE_NAME);
+    }
     let exe = std::env::current_exe().ok();
     let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
     choose(exe.as_deref().and_then(Path::parent), appdata.as_deref())

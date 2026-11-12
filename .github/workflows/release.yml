@@ -1,5 +1,8 @@
-# Builds the Windows exe for x64 and ARM64, as a zip and as an installer (Inno Setup).
-# - On a version tag (v*), the files are attached to a draft GitHub release, to be reviewed and published by hand.
+# Builds the Windows exe for x64 and ARM64, as a zip, as an installer (Inno Setup) and as an
+# MSIX package for the Microsoft Store.
+# - On a version tag (v*), the zips and installers are attached to a draft GitHub release, to be
+#   reviewed and published by hand. The MSIX packages are workflow artifacts only (uploaded to
+#   Partner Center; an unsigned package cannot be installed).
 # - Run it by hand (workflow_dispatch) to only build and keep the files as workflow artifacts.
 name: Release
 
@@ -62,6 +65,55 @@ jobs:
           name: nubmiddle-${{ matrix.arch }}
           path: nubmiddle-v*
 
+      # The MSIX package for the Microsoft Store, and a copy signed with a throwaway certificate
+      # for trying it on a test PC. The identity comes from the repository's variables
+      # (Partner Center > Product identity).
+      - name: MSIX package
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"' |
+            Select-Object -First 1).Matches.Groups[1].Value
+          $params = @{ Exe = "target/${{ matrix.target }}/release/nubmiddle.exe"; Version = $version
+                       Arch = "${{ matrix.arch }}"; OutDir = "msix"; TestSign = $true }
+          if ($env:MSIX_IDENTITY_NAME) { $params.IdentityName = $env:MSIX_IDENTITY_NAME }
+          if ($env:MSIX_PUBLISHER) { $params.Publisher = $env:MSIX_PUBLISHER }
+          if ($env:MSIX_PUBLISHER_DISPLAY_NAME) { $params.PublisherDisplayName = $env:MSIX_PUBLISHER_DISPLAY_NAME }
+          ./packaging/msix/build.ps1 @params
+          Get-ChildItem msix
+
+      # The checks Partner Center runs on a submission, run here first (installs the test copy;
+      # only the x64 package can be installed on the x64 runner). The report is kept with the package.
+      - name: Windows App Certification Kit
+        if: matrix.arch == 'x64'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $appcert = "${env:ProgramFiles(x86)}\Windows Kits\10\App Certification Kit\appcert.exe"
+          if (-not (Test-Path $appcert)) { Write-Host "the App Certification Kit is not installed"; exit 0 }
+          $cer = Get-ChildItem msix/*-test.cer | Select-Object -First 1
+          $test = Get-ChildItem msix/*-test.msix | Select-Object -First 1
+          Import-Certificate -FilePath $cer.FullName -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          & $appcert reset
+          & $appcert test -appxpackagepath $test.FullName -reportoutputpath "$PWD\msix\wack-report.xml"
+          Write-Host "appcert exit code: $LASTEXITCODE"
+          if (Test-Path msix/wack-report.xml) {
+            [xml] $report = Get-Content -Raw msix/wack-report.xml
+            Write-Host "Overall: $($report.REPORT.OVERALL_RESULT)"
+            $report.SelectNodes("//TEST[RESULT!='PASS']") | ForEach-Object {
+              Write-Host "$($_.RESULT): $($_.NAME)"
+            }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nubmiddle-msix-${{ matrix.arch }}
+          path: msix/*
+          retention-days: 30
+
   release:
     needs: build
     if: github.ref_type == 'tag'
@@ -69,6 +121,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          # The zips and installers only (the MSIX packages are for Partner Center)
+          pattern: nubmiddle-x64
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nubmiddle-arm64
           merge-multiple: true
 
       - name: Create a draft release

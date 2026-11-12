@@ -5,12 +5,13 @@
 """Generates the nubmiddle icons (a red TrackPoint nub between four keycaps).
 
 Writes multi-size .ico files for the normal and the paused state, a 256 px PNG for the README,
-and optionally a preview sheet.
+the images of the MSIX package (packaging/msix/Assets, picked by makepri for each scale and
+size), the Store's 1:1 box art, and optionally a preview sheet.
 Small sizes (up to 24 px) use a simplified drawing so that the keys stay apart and the
 nub stays readable in the notification area.
 
 Usage:
-    uv run assets/make_icons.py [--out-dir assets] [--preview PATH]
+    uv run assets/make_icons.py [--out-dir assets] [--msix-dir packaging/msix/Assets] [--preview PATH]
 """
 
 from __future__ import annotations
@@ -119,6 +120,76 @@ def render(palette: Palette) -> dict[int, Image.Image]:
     }
 
 
+def icon(palette: Palette, size: int) -> Image.Image:
+    """Renders the icon at one size (the simplified drawing up to SMALL_MAX).
+
+    Args:
+        palette: Colors to use.
+        size: Width and height in pixels.
+
+    Returns:
+        RGBA image of size x size pixels.
+    """
+    return draw(palette, small=size <= SMALL_MAX).resize((size, size), Image.LANCZOS)
+
+
+def tile(palette: Palette, width: int, height: int, fill: float) -> Image.Image:
+    """A transparent tile with the icon centered, `fill` of the tile's height tall.
+
+    Args:
+        palette: Colors to use.
+        width: Tile width in pixels.
+        height: Tile height in pixels.
+        fill: Icon height as a fraction of the tile height.
+
+    Returns:
+        RGBA image.
+    """
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    size = round(height * fill)
+    canvas.paste(icon(palette, size), ((width - size) // 2, (height - size) // 2))
+    return canvas
+
+
+def write_msix_assets(out: Path) -> int:
+    """Writes the images the MSIX manifest refers to, one file per scale and target size.
+
+    Args:
+        out: The Assets folder (existing PNGs are replaced).
+
+    Returns:
+        Number of images written.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("*.png"):
+        old.unlink()
+    written = 0
+
+    def save(image: Image.Image, name: str) -> None:
+        nonlocal written
+        image.save(out / name, optimize=True)
+        written += 1
+
+    for scale in (100, 125, 150, 200, 400):
+        f = scale / 100
+        # The app list, the taskbar and the title bar: the icon itself
+        save(icon(NORMAL, round(44 * f)), f"Square44x44Logo.scale-{scale}.png")
+        # The Start menu tiles and the Store: the icon with some room around it
+        save(tile(NORMAL, round(150 * f), round(150 * f), 0.66), f"Square150x150Logo.scale-{scale}.png")
+        save(tile(NORMAL, round(310 * f), round(150 * f), 0.66), f"Wide310x150Logo.scale-{scale}.png")
+        save(icon(NORMAL, round(50 * f)), f"StoreLogo.scale-{scale}.png")
+    # Exact sizes for the taskbar and Explorer; "unplated" ones get no colored plate behind them
+    for size in (16, 24, 32, 48, 256):
+        for suffix in ("", "_altform-unplated", "_altform-lightunplated"):
+            save(icon(NORMAL, size), f"Square44x44Logo.targetsize-{size}{suffix}.png")
+    # The Store's 1:1 box art (shown in the Store's lists): the icon on a dark plate
+    art = Image.new("RGBA", (1080, 1080), (38, 40, 44, 255))
+    big = icon(NORMAL, 760)
+    art.paste(big, (160, 160), big)
+    art.convert("RGB").save(out.parent / "StoreBoxArt-1080.png", optimize=True)
+    return written + 1
+
+
 def write_ico(path: Path, images: dict[int, Image.Image]) -> None:
     """Writes a .ico file with one PNG-compressed entry per size (supported since Windows Vista).
 
@@ -176,6 +247,12 @@ def main() -> None:
         help="folder for nubmiddle.ico, nubmiddle-paused.ico and nubmiddle.png "
         "(default: this script's folder)",
     )
+    parser.add_argument(
+        "--msix-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "packaging" / "msix" / "Assets",
+        help="folder for the MSIX package's images (default: packaging/msix/Assets)",
+    )
     parser.add_argument("--preview", type=Path, help="also write a preview sheet (PNG) here")
     args = parser.parse_args()
 
@@ -185,6 +262,8 @@ def main() -> None:
     write_ico(args.out_dir / "nubmiddle-paused.ico", paused)
     normal[256].save(args.out_dir / "nubmiddle.png")
     print(f"wrote nubmiddle.ico, nubmiddle-paused.ico and nubmiddle.png in {args.out_dir}")
+    n = write_msix_assets(args.msix_dir)
+    print(f"wrote {n} MSIX images in {args.msix_dir} (and the Store box art next to it)")
     if args.preview:
         preview(args.preview, [normal, paused])
         print(f"wrote {args.preview}")

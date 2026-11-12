@@ -71,6 +71,8 @@ pub enum Text {
     OpenSettings,
     ReloadSettings,
     Autostart,
+    /// From the Store package: the startup task, which cannot be elevated
+    AutostartPackaged,
     AutostartChecking,
     AutostartUpdate,
     Pause,
@@ -87,11 +89,13 @@ pub enum Text {
     /// `{}` is the number of lines, then the details
     SettingsErrorsBody,
     SettingsReloaded,
+    RunningHintTitle,
+    RunningHintBody,
 }
 
 /// Every text, for tests.
 #[cfg(test)]
-const ALL: [Text; 31] = [
+const ALL: [Text; 34] = [
     Text::MoveMenu,
     Text::ModeScroll,
     Text::ModeDrag,
@@ -110,6 +114,7 @@ const ALL: [Text; 31] = [
     Text::OpenSettings,
     Text::ReloadSettings,
     Text::Autostart,
+    Text::AutostartPackaged,
     Text::AutostartChecking,
     Text::AutostartUpdate,
     Text::Pause,
@@ -123,6 +128,8 @@ const ALL: [Text; 31] = [
     Text::SettingsErrorsTitle,
     Text::SettingsErrorsBody,
     Text::SettingsReloaded,
+    Text::RunningHintTitle,
+    Text::RunningHintBody,
 ];
 
 /// Returns the text in the given language.
@@ -166,6 +173,8 @@ pub fn tr(lang: Lang, text: Text) -> &'static str {
         (ReloadSettings, Ja) => "設定ファイルを読み込み直す",
         (Autostart, En) => "Start with Windows (as administrator)",
         (Autostart, Ja) => "Windows の起動時に開始 (管理者)",
+        (AutostartPackaged, En) => "Start with Windows",
+        (AutostartPackaged, Ja) => "Windows の起動時に開始",
         (AutostartChecking, En) => "Start with Windows (checking...)",
         (AutostartChecking, Ja) => "Windows の起動時に開始 (確認中...)",
         (AutostartUpdate, En) => "Start with Windows: update to this exe",
@@ -196,6 +205,14 @@ pub fn tr(lang: Lang, text: Text) -> &'static str {
         (SettingsErrorsBody, Ja) => "{} 行を読み飛ばしました: ",
         (SettingsReloaded, En) => "Settings file reloaded.",
         (SettingsReloaded, Ja) => "設定ファイルを読み込み直しました。",
+        (RunningHintTitle, En) => "nubmiddle is running",
+        (RunningHintTitle, Ja) => "nubmiddle は動作中です",
+        (RunningHintBody, En) => {
+            "Hold the middle button and push the stick to scroll. Click this icon in the notification area for settings."
+        }
+        (RunningHintBody, Ja) => {
+            "中ボタンを押したままスティックを倒すとスクロールします。設定は通知領域のこのアイコンをクリックしてください。"
+        }
     }
 }
 
