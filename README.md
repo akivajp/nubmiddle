@@ -38,7 +38,7 @@ vendor API), and to manage its own autostart — including fixing it up automati
 
 ## Install
 
-- **Microsoft Store** (recommended; the listing is being submitted — the link will appear here).
+- **Microsoft Store** (recommended): [nubmiddle on the Microsoft Store](https://apps.microsoft.com/detail/9NNH2W7M8MGP).
   Signed by the Store (no SmartScreen warning) and updated by it. It keeps its settings in the
   package's folder, `%LOCALAPPDATA%\Packages\C2B504BA.nubmiddle_1raghr5p0ryyw\LocalState`
   (removed with the app), and its "Start with Windows" runs without administrator rights, so this

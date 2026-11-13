@@ -38,7 +38,7 @@ nubmiddle は単機能で、ベンダーに依存しない (ベンダーの API 
 
 ## インストール
 
-- **Microsoft Store** (おすすめ。申請中で、公開されたらここにリンクを載せます)。
+- **Microsoft Store** (おすすめ): [Microsoft Store の nubmiddle](https://apps.microsoft.com/detail/9NNH2W7M8MGP)。
   Store が署名するので SmartScreen の警告が出ず、更新も Store が配ります。設定はパッケージのフォルダ
   `%LOCALAPPDATA%\Packages\C2B504BA.nubmiddle_1raghr5p0ryyw\LocalState` に置かれ (アンインストールで消えます)、
   「Windows の起動時に開始」は管理者権限なしで動くため、この版は[管理者権限のウィンドウ](#管理者権限のウィンドウ)を
